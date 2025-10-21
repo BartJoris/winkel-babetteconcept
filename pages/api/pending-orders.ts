@@ -170,7 +170,12 @@ export default async function handler(
           : null,
         state: order.state,
         website_id: order.website_id,
-        order_line: orderLines,
+        order_line: orderLines.map((line: any) => ({
+          product_id: line.product_id,
+          product_uom_qty: line.product_uom_qty,
+          price_unit: line.price_unit,
+          price_total: line.price_total,
+        })),
       });
     }
 

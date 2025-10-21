@@ -30,6 +30,41 @@ const formatEuro = (amount: number) =>
 const formatNumber = (num: number) =>
   num.toLocaleString('nl-BE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
+// ImageModal component for enlarged image view
+interface ImageModalProps {
+  image: string;
+  productName: string;
+  onClose: () => void;
+}
+
+const ImageModal: React.FC<ImageModalProps> = ({ image, productName, onClose }) => (
+  <div 
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+    onClick={onClose}
+  >
+    <div 
+      className="relative bg-white rounded-lg shadow-2xl max-w-2xl max-h-96"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img 
+        src={`data:image/png;base64,${image}`} 
+        alt={productName}
+        className="max-w-full max-h-96 object-contain rounded-lg"
+      />
+      <div className="p-4 text-center">
+        <p className="text-sm font-medium text-gray-700">{productName}</p>
+      </div>
+      <button
+        onClick={onClose}
+        className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center font-bold text-lg transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  </div>
+);
+
 // Memoized OrderCard component for better performance
 interface OrderCardProps {
   order: PendingOrderItem;
@@ -39,6 +74,8 @@ interface OrderCardProps {
   onConfirm: (orderId: number) => Promise<void>;
   onDownloadInvoice: (orderId: number, orderName: string) => Promise<void>;
   onDownloadShippingLabel: (orderId: number, orderName: string) => Promise<void>;
+  productImages: Record<number, string | null>;
+  onImageClick: (image: string, productName: string) => void;
 }
 
 const OrderCard = memo(({ 
@@ -48,7 +85,9 @@ const OrderCard = memo(({
   onToggleExpand,
   onConfirm,
   onDownloadInvoice,
-  onDownloadShippingLabel 
+  onDownloadShippingLabel,
+  productImages,
+  onImageClick,
 }: OrderCardProps) => (
   <div className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
     <div
@@ -131,6 +170,7 @@ const OrderCard = memo(({
             <table className="w-full text-sm">
               <thead className="border-b-2 border-gray-300 bg-gray-50">
                 <tr className="text-left text-gray-700">
+                  <th className="py-2 px-3 font-semibold">Afbeelding</th>
                   <th className="py-2 px-3 font-semibold">Product</th>
                   <th className="py-2 px-3 text-right font-semibold">Aantal</th>
                   <th className="py-2 px-3 text-right font-semibold">Prijs</th>
@@ -140,6 +180,27 @@ const OrderCard = memo(({
               <tbody>
                 {order.order_line.map((line, idx) => (
                   <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="py-2 px-3">
+                       {line.product_id && typeof line.product_id !== 'boolean' && productImages[line.product_id[0]] ? (
+                         // eslint-disable-next-line @next/next/no-img-element
+                         <img 
+                           src={`data:image/png;base64,${productImages[line.product_id[0]]}`} 
+                           alt={line.product_id[1]}
+                           className="h-12 w-12 object-cover rounded-lg shadow-sm cursor-pointer hover:shadow-md hover:scale-110 transition-all"
+                           onClick={() => {
+                             const img = productImages[line.product_id[0]];
+                             const name = line.product_id[1];
+                             if (img && name) {
+                               onImageClick(img, name);
+                             }
+                           }}
+                         />
+                       ) : (
+                         <div className="h-12 w-12 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400">
+                           <span className="text-sm">📦</span>
+                         </div>
+                       )}
+                      </td>
                     <td className="py-2 px-3 text-gray-900">
                       {line.product_id && typeof line.product_id !== 'boolean' ? line.product_id[1] : 'Product'}
                     </td>
@@ -220,6 +281,8 @@ export default function WebshopordersBeheren() {
   const [expandedOrders, setExpandedOrders] = useState<Record<number, boolean>>({});
   const [processingOrders, setProcessingOrders] = useState<Record<number, boolean>>({});
   const [displayedOrderCount, setDisplayedOrderCount] = useState(3);
+  const [productImages, setProductImages] = useState<Record<number, Record<number, string | null>>>({});
+  const [selectedImage, setSelectedImage] = useState<{ image: string; productName: string } | null>(null);
 
   const fetchPendingOrders = useCallback(async () => {
     setLoading(true);
@@ -384,13 +447,39 @@ export default function WebshopordersBeheren() {
                       order={order}
                       isExpanded={expandedOrders[order.id]}
                       isProcessing={processingOrders[order.id]}
-                      onToggleExpand={() => setExpandedOrders(prev => ({
-                        ...prev,
-                        [order.id]: !prev[order.id]
-                      }))}
+                      onToggleExpand={async () => {
+                        const newExpandedState = !expandedOrders[order.id];
+                        setExpandedOrders(prev => ({
+                          ...prev,
+                          [order.id]: newExpandedState
+                        }));
+                        
+                        // Fetch images when expanding
+                        if (newExpandedState && !productImages[order.id]) {
+                          try {
+                            const productIds = order.order_line.map(line => line.product_id[0]);
+                            const res = await fetch('/api/product-images', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ productIds }),
+                            });
+                            const json = await res.json();
+                            if (json.images) {
+                              setProductImages(prev => ({
+                                ...prev,
+                                [order.id]: json.images
+                              }));
+                            }
+                          } catch (err) {
+                            console.error('Error fetching images:', err);
+                          }
+                        }
+                      }}
                       onConfirm={handleConfirmOrder}
                       onDownloadInvoice={handleDownloadInvoice}
                       onDownloadShippingLabel={handleDownloadShippingLabel}
+                      productImages={productImages[order.id] || {}}
+                      onImageClick={(image, name) => setSelectedImage({ image, productName: name })}
                     />
                   ))}
                 </div>
@@ -423,6 +512,14 @@ export default function WebshopordersBeheren() {
           </div>
         </div>
       </div>
+      
+      {selectedImage && (
+        <ImageModal
+          image={selectedImage.image}
+          productName={selectedImage.productName}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </div>
   );
 }

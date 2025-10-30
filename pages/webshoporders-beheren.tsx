@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback, memo } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
+import ProductAvailabilityDialog from '@/components/ProductAvailabilityDialog';
+import DeliveryConfirmationDialog from '@/components/DeliveryConfirmationDialog';
 
 type PendingOrderItem = {
   id: number;
@@ -16,6 +18,7 @@ type PendingOrderItem = {
   partner_country: string | null;
   state: string;
   website_id: [number, string] | false;
+  picking_state: string | null;
   order_line: Array<{
     product_id: [number, string];
     product_uom_qty: number;
@@ -74,6 +77,7 @@ interface OrderCardProps {
   onConfirm: (orderId: number) => Promise<void>;
   onDownloadInvoice: (orderId: number, orderName: string) => Promise<void>;
   onDownloadShippingLabel: (orderId: number, orderName: string) => Promise<void>;
+  onConfirmDelivery: (orderId: number) => Promise<void>;
   productImages: Record<number, string | null>;
   onImageClick: (image: string, productName: string) => void;
 }
@@ -86,6 +90,7 @@ const OrderCard = memo(({
   onConfirm,
   onDownloadInvoice,
   onDownloadShippingLabel,
+  onConfirmDelivery,
   productImages,
   onImageClick,
 }: OrderCardProps) => (
@@ -257,6 +262,19 @@ const OrderCard = memo(({
           >
             📄 Download Factuur
           </button>
+
+          {order.state === 'sale' && order.picking_state && order.picking_state !== 'done' && order.picking_state !== 'cancel' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfirmDelivery(order.id);
+              }}
+              disabled={isProcessing}
+              className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            >
+              📦 Bevestig Levering
+            </button>
+          )}
           
           <button
             onClick={(e) => {
@@ -283,6 +301,42 @@ export default function WebshopordersBeheren() {
   const [displayedOrderCount, setDisplayedOrderCount] = useState(3);
   const [productImages, setProductImages] = useState<Record<number, Record<number, string | null>>>({});
   const [selectedImage, setSelectedImage] = useState<{ image: string; productName: string } | null>(null);
+  
+  // New state for availability dialog
+  const [availabilityDialog, setAvailabilityDialog] = useState<{
+    isOpen: boolean;
+    orderId: number | null;
+    orderName: string;
+    isLoading: boolean;
+    products: any[];
+    allAvailable: boolean;
+    error?: string;
+  }>({
+    isOpen: false,
+    orderId: null,
+    orderName: '',
+    isLoading: false,
+    products: [],
+    allAvailable: false,
+  });
+  const [pendingOrderConfirmation, setPendingOrderConfirmation] = useState<number | null>(null);
+
+  // New state for delivery confirmation dialog
+  const [deliveryDialog, setDeliveryDialog] = useState<{
+    isOpen: boolean;
+    orderId: number | null;
+    orderName: string;
+    isLoading: boolean;
+    pickings: any[];
+    error?: string;
+  }>({
+    isOpen: false,
+    orderId: null,
+    orderName: '',
+    isLoading: false,
+    pickings: [],
+  });
+  const [pendingDeliveryConfirmation, setPendingDeliveryConfirmation] = useState<number | null>(null);
 
   const fetchPendingOrders = useCallback(async () => {
     setLoading(true);
@@ -307,12 +361,65 @@ export default function WebshopordersBeheren() {
   }, [isLoggedIn, fetchPendingOrders]);
 
   const handleConfirmOrder = async (orderId: number) => {
-    setProcessingOrders(prev => ({ ...prev, [orderId]: true }));
+    // First, check product availability
+    const orderToConfirm = pendingOrders.find(o => o.id === orderId);
+    if (!orderToConfirm) return;
+
+    setAvailabilityDialog(prev => ({
+      ...prev,
+      isOpen: true,
+      orderId,
+      orderName: orderToConfirm.name,
+      isLoading: true,
+      products: [],
+      allAvailable: false,
+    }));
+
+    try {
+      const res = await fetch('/api/check-product-availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+
+      const json = await res.json();
+
+      if (res.ok && json.success) {
+        setAvailabilityDialog(prev => ({
+          ...prev,
+          isLoading: false,
+          products: json.products || [],
+          allAvailable: json.allAvailable || false,
+        }));
+        setPendingOrderConfirmation(orderId);
+      } else {
+        setAvailabilityDialog(prev => ({
+          ...prev,
+          isLoading: false,
+          error: json.error || 'Kon beschikbaarheid niet controleren',
+        }));
+      }
+    } catch (err) {
+      console.error('Error checking availability:', err);
+      setAvailabilityDialog(prev => ({
+        ...prev,
+        isLoading: false,
+        error: 'Fout bij controleren beschikbaarheid',
+      }));
+    }
+  };
+
+  const handleConfirmOrderAfterAvailabilityCheck = async () => {
+    if (!pendingOrderConfirmation) return;
+
+    setProcessingOrders(prev => ({ ...prev, [pendingOrderConfirmation]: true }));
+    setAvailabilityDialog(prev => ({ ...prev, isOpen: false }));
+
     try {
       const res = await fetch('/api/confirm-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ orderId: pendingOrderConfirmation }),
       });
       const json = await res.json();
       if (json.success) {
@@ -325,8 +432,23 @@ export default function WebshopordersBeheren() {
       console.error('Error confirming order:', err);
       alert('Failed to confirm order');
     } finally {
-      setProcessingOrders(prev => ({ ...prev, [orderId]: false }));
+      setProcessingOrders(prev => ({ ...prev, [pendingOrderConfirmation]: false }));
+      setPendingOrderConfirmation(null);
     }
+  };
+
+  const handleCancelAvailabilityDialog = () => {
+    setAvailabilityDialog(prev => ({
+      ...prev,
+      isOpen: false,
+      orderId: null,
+      orderName: '',
+      isLoading: false,
+      products: [],
+      allAvailable: false,
+      error: undefined,
+    }));
+    setPendingOrderConfirmation(null);
   };
 
   const handleDownloadInvoice = async (orderId: number, orderName: string) => {
@@ -393,6 +515,120 @@ export default function WebshopordersBeheren() {
     } finally {
       setProcessingOrders(prev => ({ ...prev, [orderId]: false }));
     }
+  };
+
+  const handleConfirmDelivery = async (orderId: number) => {
+    console.log('🚚 handleConfirmDelivery called with orderId:', orderId);
+    const orderToConfirm = pendingOrders.find(o => o.id === orderId);
+    if (!orderToConfirm) return;
+
+    setDeliveryDialog(prev => ({
+      ...prev,
+      isOpen: true,
+      orderId,
+      orderName: orderToConfirm.name,
+      isLoading: true,
+      pickings: [],
+    }));
+
+    try {
+      console.log('📤 Fetching picking details from /api/get-picking-details');
+      const res = await fetch('/api/get-picking-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+
+      const json = await res.json();
+      console.log('📥 Response:', json);
+
+      if (res.ok && json.success) {
+        setDeliveryDialog(prev => ({
+          ...prev,
+          isLoading: false,
+          pickings: json.pickings || [],
+        }));
+        setPendingDeliveryConfirmation(orderId);
+      } else {
+        setDeliveryDialog(prev => ({
+          ...prev,
+          isLoading: false,
+          error: json.error || 'Kon leveringsgegevens niet ophalen',
+        }));
+      }
+    } catch (err) {
+      console.error('❌ Error fetching picking details:', err);
+      setDeliveryDialog(prev => ({
+        ...prev,
+        isLoading: false,
+        error: 'Fout bij ophalen leveringsgegevens',
+      }));
+    }
+  };
+
+  const handleConfirmDeliveryFromDialog = async () => {
+    if (!pendingDeliveryConfirmation) return;
+
+    setDeliveryDialog(prev => ({ ...prev, isLoading: true }));
+    setProcessingOrders(prev => ({ ...prev, [pendingDeliveryConfirmation]: true }));
+
+    try {
+      console.log('📤 Confirming delivery with /api/confirm-delivery');
+      const res = await fetch('/api/confirm-delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: pendingDeliveryConfirmation }),
+      });
+
+      const json = await res.json();
+      console.log('📥 Confirm Response:', json);
+
+      if (res.ok && json.success) {
+        console.log('✅ Delivery confirmed successfully');
+        alert('Levering bevestigd! ✅');
+        setDeliveryDialog(prev => ({
+          ...prev,
+          isOpen: false,
+          orderId: null,
+          orderName: '',
+          isLoading: false,
+          pickings: [],
+        }));
+        setPendingDeliveryConfirmation(null);
+        await fetchPendingOrders();
+      } else {
+        console.log('❌ API returned error:', json.error);
+        const errorMsg = json.error || 'Kon levering niet bevestigen';
+        const details = json.details ? '\n' + json.details.join('\n') : '';
+        setDeliveryDialog(prev => ({
+          ...prev,
+          isLoading: false,
+          error: `${errorMsg}${details}`,
+        }));
+      }
+    } catch (err) {
+      console.error('❌ Error confirming delivery:', err);
+      setDeliveryDialog(prev => ({
+        ...prev,
+        isLoading: false,
+        error: 'Fout bij bevestigen levering',
+      }));
+    } finally {
+      setProcessingOrders(prev => ({ ...prev, [pendingDeliveryConfirmation]: false }));
+    }
+  };
+
+  const handleCancelDeliveryDialog = () => {
+    setDeliveryDialog(prev => ({
+      ...prev,
+      isOpen: false,
+      orderId: null,
+      orderName: '',
+      isLoading: false,
+      pickings: [],
+      error: undefined,
+    }));
+    setPendingDeliveryConfirmation(null);
   };
 
   return (
@@ -478,6 +714,7 @@ export default function WebshopordersBeheren() {
                       onConfirm={handleConfirmOrder}
                       onDownloadInvoice={handleDownloadInvoice}
                       onDownloadShippingLabel={handleDownloadShippingLabel}
+                      onConfirmDelivery={handleConfirmDelivery}
                       productImages={productImages[order.id] || {}}
                       onImageClick={(image, name) => setSelectedImage({ image, productName: name })}
                     />
@@ -518,6 +755,31 @@ export default function WebshopordersBeheren() {
           image={selectedImage.image}
           productName={selectedImage.productName}
           onClose={() => setSelectedImage(null)}
+        />
+      )}
+
+      {availabilityDialog.isOpen && (
+        <ProductAvailabilityDialog
+          isOpen={availabilityDialog.isOpen}
+          orderName={availabilityDialog.orderName}
+          products={availabilityDialog.products}
+          allAvailable={availabilityDialog.allAvailable}
+          isLoading={availabilityDialog.isLoading}
+          error={availabilityDialog.error}
+          onCancel={handleCancelAvailabilityDialog}
+          onConfirm={handleConfirmOrderAfterAvailabilityCheck}
+        />
+      )}
+
+      {deliveryDialog.isOpen && (
+        <DeliveryConfirmationDialog
+          isOpen={deliveryDialog.isOpen}
+          orderName={deliveryDialog.orderName}
+          pickings={deliveryDialog.pickings}
+          isLoading={deliveryDialog.isLoading}
+          error={deliveryDialog.error}
+          onCancel={handleCancelDeliveryDialog}
+          onConfirm={handleConfirmDeliveryFromDialog}
         />
       )}
     </div>

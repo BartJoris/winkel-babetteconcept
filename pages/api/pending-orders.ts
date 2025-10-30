@@ -153,6 +153,28 @@ export default async function handler(
         },
       });
 
+      // Get picking/delivery state to know if delivery needs confirmation
+      let pickingState = null;
+      try {
+        const pickings = await odooCall<any[]>({
+          uid,
+          password,
+          model: 'stock.picking',
+          method: 'search_read',
+          args: [[['sale_id', '=', order.id]]],
+          kwargs: {
+            fields: ['state'],
+            limit: 1,
+          },
+        });
+        if (pickings.length > 0) {
+          pickingState = pickings[0].state;
+        }
+      } catch (err) {
+        // If picking fetch fails, just continue without it
+        console.log(`Could not fetch picking state for order ${order.id}`);
+      }
+
       enrichedOrders.push({
         id: order.id,
         name: order.name,
@@ -170,6 +192,7 @@ export default async function handler(
           : null,
         state: order.state,
         website_id: order.website_id,
+        picking_state: pickingState,
         order_line: orderLines.map((line: any) => ({
           product_id: line.product_id,
           product_uom_qty: line.product_uom_qty,

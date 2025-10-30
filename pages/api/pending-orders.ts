@@ -20,6 +20,7 @@ type PendingOrder = {
   partner_country: string | null;
   state: string;
   website_id: [number, string] | false;
+  picking_state: string | null;
   order_line: Array<{
     product_id: [number, string];
     product_uom_qty: number;

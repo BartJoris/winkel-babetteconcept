@@ -142,8 +142,8 @@ export default async function handler(
     }
 
     // Build picking details with order products
-    const pickingDetails = pickings.map(picking => {
-      const lines = orderProducts.map(line => ({
+    const pickingDetails: PickingDetails[] = pickings.map(picking => {
+      const lines: PickingLine[] = orderProducts.map(line => ({
         id: line.id,
         product_id: line.product_id,
         product_name: line.product_id && typeof line.product_id !== 'boolean' ? line.product_id[1] : 'Unknown',

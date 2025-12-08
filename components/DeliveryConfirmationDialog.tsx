@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface MoveLine {
   id: number;
   product_id: [number, string];

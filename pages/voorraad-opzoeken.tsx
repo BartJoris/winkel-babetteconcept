@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 const formatEuro = (amount: number) =>

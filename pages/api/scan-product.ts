@@ -5,6 +5,63 @@ import { sessionOptions, SessionData } from '@/lib/session';
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
 const ODOO_DB = process.env.ODOO_DB || 'babetteconcept';
 
+// In-memory cache for attribute values (rarely change)
+const ATTR_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const attrCache = new Map<number, { name: string; attributeName: string; expires: number }>();
+
+function getCachedAttributes(ids: number[]): Record<number, { name: string; attributeName: string }> | null {
+  const now = Date.now();
+  const result: Record<number, { name: string; attributeName: string }> = {};
+  for (const id of ids) {
+    const cached = attrCache.get(id);
+    if (!cached || cached.expires < now) return null;
+    result[id] = { name: cached.name, attributeName: cached.attributeName };
+  }
+  return result;
+}
+
+function cacheAttributes(attrs: Array<{ id: number; name: string; attributeName: string }>) {
+  const expires = Date.now() + ATTR_CACHE_TTL;
+  for (const attr of attrs) {
+    attrCache.set(attr.id, { name: attr.name, attributeName: attr.attributeName, expires });
+  }
+}
+
+async function fetchAttributeValues(
+  uid: number,
+  password: string,
+  attrIds: number[]
+): Promise<Record<number, { name: string; attributeName: string }>> {
+  if (attrIds.length === 0) return {};
+
+  const uniqueIds = [...new Set(attrIds)];
+  const cached = getCachedAttributes(uniqueIds);
+  if (cached) return cached;
+
+  const attrValues = await odooCall<any[]>({
+    uid,
+    password,
+    model: 'product.template.attribute.value',
+    method: 'search_read',
+    args: [[['id', 'in', uniqueIds]]],
+    kwargs: { fields: ['id', 'name', 'attribute_id'] },
+  });
+
+  const result: Record<number, { name: string; attributeName: string }> = {};
+  const toCache: Array<{ id: number; name: string; attributeName: string }> = [];
+
+  for (const av of attrValues) {
+    const attributeName = av.attribute_id && typeof av.attribute_id !== 'boolean'
+      ? av.attribute_id[1]
+      : '';
+    result[av.id] = { name: av.name, attributeName };
+    toCache.push({ id: av.id, name: av.name, attributeName });
+  }
+
+  cacheAttributes(toCache);
+  return result;
+}
+
 async function odooCall<T>(params: {
   uid: number;
   password: string;
@@ -63,9 +120,63 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { barcode, productId } = req.body;
+    const { barcode, productId, light } = req.body;
 
-    console.log('🔍 Product Scan Request - Barcode:', barcode, 'Product ID:', productId);
+    console.log('🔍 Product Scan Request - Barcode:', barcode, 'Product ID:', productId, 'Light:', !!light);
+
+    const productFields = ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price'];
+
+    // Light mode: fast scan returning only the scanned product (no images, no variants)
+    if (light && barcode) {
+      const products = await odooCall<any[]>({
+        uid,
+        password,
+        model: 'product.product',
+        method: 'search_read',
+        args: [[
+          ['barcode', '=', barcode.trim()],
+          ['active', '=', true]
+        ]],
+        kwargs: {
+          fields: [...productFields, 'product_template_attribute_value_ids'],
+          limit: 1,
+        },
+      });
+
+      if (products.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: `Geen product gevonden met barcode: ${barcode}`,
+        });
+      }
+
+      const p = products[0];
+
+      const attrIds: number[] = p.product_template_attribute_value_ids || [];
+      const attrMap = await fetchAttributeValues(uid, password, attrIds);
+      const attributes = attrIds
+        .map(id => attrMap[id])
+        .filter(attr => attr && !attr.attributeName.toLowerCase().includes('merk'))
+        .map(attr => attr.name)
+        .join(', ');
+
+      return res.status(200).json({
+        success: true,
+        productName: p.name,
+        scannedVariantId: p.id,
+        variants: [{
+          id: p.id,
+          name: p.name,
+          barcode: p.barcode,
+          qty_available: p.qty_available,
+          list_price: p.list_price,
+          image: null,
+          isScanned: true,
+          attributes: attributes || null,
+        }],
+        totalVariants: 1,
+      });
+    }
 
     // If productId is provided, use it directly (from search results click)
     if (productId) {
@@ -79,7 +190,7 @@ export default async function handler(
           ['active', '=', true]
         ]],
         kwargs: {
-          fields: ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price', 'image_1920'],
+          fields: productFields,
           limit: 1,
         },
       });
@@ -115,7 +226,7 @@ export default async function handler(
         ['active', '=', true]
       ]],
       kwargs: {
-        fields: ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price', 'image_1920'],
+        fields: productFields,
         limit: 1,
       },
     });
@@ -137,7 +248,7 @@ export default async function handler(
           ['active', '=', true]
         ]],
         kwargs: {
-          fields: ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price', 'image_1920', 'product_template_attribute_value_ids'],
+          fields: ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price', 'product_template_attribute_value_ids'],
           limit: 50,
           order: 'name asc',
         },
@@ -155,45 +266,19 @@ export default async function handler(
       if (products.length > 1) {
         console.log(`✅ Found ${products.length} products matching name search`);
         
-        // Get all attribute value IDs from search results
         const allAttrIds: number[] = [];
         products.forEach(p => {
-          if (p.product_template_attribute_value_ids && Array.isArray(p.product_template_attribute_value_ids)) {
+          if (Array.isArray(p.product_template_attribute_value_ids)) {
             allAttrIds.push(...p.product_template_attribute_value_ids);
           }
         });
 
-        // Fetch attribute values with their attribute names
-        const attributeValueMap: Record<number, { name: string; attributeName: string }> = {};
-        if (allAttrIds.length > 0) {
-          const uniqueIds = [...new Set(allAttrIds)];
-          const attrValues = await odooCall<any[]>({
-            uid,
-            password,
-            model: 'product.template.attribute.value',
-            method: 'search_read',
-            args: [[['id', 'in', uniqueIds]]],
-            kwargs: {
-              fields: ['id', 'name', 'attribute_id'],
-            },
-          });
-
-          attrValues.forEach(av => {
-            const attrName = av.attribute_id && typeof av.attribute_id !== 'boolean' 
-              ? av.attribute_id[1] 
-              : '';
-            attributeValueMap[av.id] = {
-              name: av.name,
-              attributeName: attrName,
-            };
-          });
-        }
+        const attributeValueMap = await fetchAttributeValues(uid, password, allAttrIds);
 
         return res.status(200).json({
           success: true,
           isSearchResults: true,
           searchResults: products.map(p => {
-            // Get attributes but exclude "Merk" (brand)
             const attrIds = p.product_template_attribute_value_ids || [];
             const attributes = attrIds
               .map((id: number) => attributeValueMap[id])
@@ -207,7 +292,6 @@ export default async function handler(
               barcode: p.barcode,
               qty_available: p.qty_available,
               list_price: p.list_price,
-              image: p.image_1920,
               attributes: attributes || null,
             };
           }),
@@ -245,91 +329,62 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
         barcode: scannedProduct.barcode,
         qty_available: scannedProduct.qty_available,
         list_price: scannedProduct.list_price,
-        image: scannedProduct.image_1920,
       },
       variants: [],
       totalVariants: 1,
     };
   }
 
-  // Get the product template name
-  const templates = await odooCall<any[]>({
-    uid,
-    password,
-    model: 'product.template',
-    method: 'search_read',
-    args: [[['id', '=', templateId]]],
-    kwargs: {
-      fields: ['name'],
-      limit: 1,
-    },
-  });
+  // Fetch template name and all variants in parallel
+  const [templates, allVariants] = await Promise.all([
+    odooCall<any[]>({
+      uid,
+      password,
+      model: 'product.template',
+      method: 'search_read',
+      args: [[['id', '=', templateId]]],
+      kwargs: {
+        fields: ['name'],
+        limit: 1,
+      },
+    }),
+    odooCall<any[]>({
+      uid,
+      password,
+      model: 'product.product',
+      method: 'search_read',
+      args: [[
+        ['product_tmpl_id', '=', templateId],
+        ['active', '=', true]
+      ]],
+      kwargs: {
+        fields: [
+          'id',
+          'name',
+          'display_name',
+          'barcode',
+          'qty_available',
+          'list_price',
+          'product_template_attribute_value_ids',
+        ],
+        order: 'name asc',
+      },
+    }),
+  ]);
 
   const productName = templates.length > 0 ? templates[0].name : scannedProduct.name;
-
-  // Get all variants of this product template (exclude archived)
-  const allVariants = await odooCall<any[]>({
-    uid,
-    password,
-    model: 'product.product',
-    method: 'search_read',
-    args: [[
-      ['product_tmpl_id', '=', templateId],
-      ['active', '=', true]
-    ]],
-    kwargs: {
-      fields: [
-        'id',
-        'name',
-        'display_name',
-        'barcode',
-        'qty_available',
-        'list_price',
-        'image_1920',
-        'product_template_attribute_value_ids',
-      ],
-      order: 'name asc',
-    },
-  });
-
   console.log(`✅ Found ${allVariants.length} variants for product template ${templateId}`);
 
-  // Get all attribute value IDs from all variants
   const allAttributeValueIds: number[] = [];
   allVariants.forEach(variant => {
-    if (variant.product_template_attribute_value_ids && Array.isArray(variant.product_template_attribute_value_ids)) {
+    if (Array.isArray(variant.product_template_attribute_value_ids)) {
       allAttributeValueIds.push(...variant.product_template_attribute_value_ids);
     }
   });
 
-  // Fetch attribute values with attribute names to filter out "Merk"
-  const attributeValueMap: Record<number, { name: string; attributeName: string }> = {};
-  if (allAttributeValueIds.length > 0) {
-    const uniqueIds = [...new Set(allAttributeValueIds)];
-    const attrValues = await odooCall<any[]>({
-      uid,
-      password,
-      model: 'product.template.attribute.value',
-      method: 'search_read',
-      args: [[['id', 'in', uniqueIds]]],
-      kwargs: {
-        fields: ['id', 'name', 'attribute_id'],
-      },
-    });
-
-    attrValues.forEach(av => {
-      const attrName = av.attribute_id && typeof av.attribute_id !== 'boolean' 
-        ? av.attribute_id[1] 
-        : '';
-      attributeValueMap[av.id] = {
-        name: av.name,
-        attributeName: attrName,
-      };
-    });
-  }
+  const attributeValueMap = await fetchAttributeValues(uid, password, allAttributeValueIds);
 
   const variants = allVariants.map(variant => {
-    // Get attribute values for this variant, excluding "Merk" (brand)
     const variantAttributes = variant.product_template_attribute_value_ids || [];
     const attributeNames = variantAttributes
       .map((id: number) => attributeValueMap[id])
@@ -343,7 +398,6 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
       barcode: variant.barcode || null,
       qty_available: variant.qty_available,
       list_price: variant.list_price,
-      image: variant.image_1920 || null,
       isScanned: variant.id === scannedProduct.id,
       attributes: attributeNames || null,
     };

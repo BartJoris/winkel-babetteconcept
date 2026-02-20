@@ -7,7 +7,6 @@ interface ScannedProduct {
   barcode: string | null;
   list_price: number;
   qty_available: number;
-  image: string | null;
   attributes: string | null;
   count: number;
   stockStatus?: 'success' | 'error' | 'pending';
@@ -40,7 +39,7 @@ export default function LabelsAfdrukkenPage() {
       const res = await fetch('/api/scan-product', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: trimmed }),
+        body: JSON.stringify({ barcode: trimmed, light: true }),
       });
 
       const json = await res.json();
@@ -68,7 +67,6 @@ export default function LabelsAfdrukkenPage() {
               barcode: scannedVariant.barcode,
               list_price: scannedVariant.list_price,
               qty_available: scannedVariant.qty_available,
-              image: scannedVariant.image,
               attributes: scannedVariant.attributes,
             });
           }
@@ -104,7 +102,6 @@ export default function LabelsAfdrukkenPage() {
           barcode: product.barcode || null,
           list_price: product.list_price || 0,
           qty_available: product.qty_available || 0,
-          image: product.image || null,
           attributes: product.attributes || null,
           count: 1,
         },
@@ -350,53 +347,34 @@ export default function LabelsAfdrukkenPage() {
                         }`}
                       >
                         <td className="py-3 px-2">
-                          <div className="flex items-center gap-3">
-                            {product.image ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={`data:image/png;base64,${product.image}`}
-                                alt={product.name}
-                                className="w-10 h-10 object-cover rounded hidden sm:block"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center hidden sm:flex">
-                                <span className="text-gray-400 text-sm">📦</span>
-                              </div>
+                          <p className="font-medium text-gray-900 text-sm break-words">
+                            {product.name}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                            {product.attributes && (
+                              <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                                {product.attributes}
+                              </span>
                             )}
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm break-words">
-                                {product.name}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                                {product.attributes && (
-                                  <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                                    {product.attributes}
-                                  </span>
-                                )}
-                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                                  product.qty_available > 0
-                                    ? 'text-green-700 bg-green-100'
-                                    : product.qty_available === 0
-                                    ? 'text-orange-700 bg-orange-100'
-                                    : 'text-red-700 bg-red-100'
-                                }`}>
-                                  Voorraad: {product.qty_available}
-                                </span>
-                              </div>
-                              {product.stockStatus === 'success' && (
-                                <span className="text-xs text-green-600 font-medium">✅ Voorraad aangepast</span>
-                              )}
-                              {product.stockStatus === 'error' && (
-                                <span className="text-xs text-red-600 font-medium">❌ {product.stockError || 'Fout'}</span>
-                              )}
-                              {product.stockStatus === 'pending' && (
-                                <span className="text-xs text-yellow-600 font-medium">⏳ Bezig...</span>
-                              )}
-                            </div>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                              product.qty_available > 0
+                                ? 'text-green-700 bg-green-100'
+                                : product.qty_available === 0
+                                ? 'text-orange-700 bg-orange-100'
+                                : 'text-red-700 bg-red-100'
+                            }`}>
+                              Voorraad: {product.qty_available}
+                            </span>
                           </div>
+                          {product.stockStatus === 'success' && (
+                            <span className="text-xs text-green-600 font-medium">✅ Voorraad aangepast</span>
+                          )}
+                          {product.stockStatus === 'error' && (
+                            <span className="text-xs text-red-600 font-medium">❌ {product.stockError || 'Fout'}</span>
+                          )}
+                          {product.stockStatus === 'pending' && (
+                            <span className="text-xs text-yellow-600 font-medium">⏳ Bezig...</span>
+                          )}
                         </td>
                         <td className="py-3 px-2 text-sm text-gray-500 font-mono hidden sm:table-cell">
                           {product.barcode || '-'}

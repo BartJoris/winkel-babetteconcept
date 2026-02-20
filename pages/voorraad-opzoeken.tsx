@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 const formatEuro = (amount: number) =>
@@ -12,6 +12,34 @@ export default function VoorraadOpzoekenPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [filterInStock, setFilterInStock] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'stock' | 'price'>('name');
+  const [imageMap, setImageMap] = useState<Record<number, string | null>>({});
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const imageRequestRef = useRef(0);
+
+  const loadImages = useCallback(async (productIds: number[]) => {
+    if (productIds.length === 0) return;
+    const requestId = ++imageRequestRef.current;
+    setImagesLoading(true);
+    try {
+      const res = await fetch('/api/product-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds }),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      // Only apply if this is still the latest request
+      if (requestId === imageRequestRef.current && json.images) {
+        setImageMap(json.images);
+      }
+    } catch (err) {
+      console.error('Error loading images:', err);
+    } finally {
+      if (requestId === imageRequestRef.current) {
+        setImagesLoading(false);
+      }
+    }
+  }, []);
 
   const handleScanProduct = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -24,6 +52,7 @@ export default function VoorraadOpzoekenPage() {
     setScanLoading(true);
     setProductData(null);
     setSearchResults([]);
+    setImageMap({});
     
     try {
       const res = await fetch('/api/scan-product', {
@@ -38,10 +67,13 @@ export default function VoorraadOpzoekenPage() {
         if (json.isSearchResults) {
           setSearchResults(json.searchResults);
           setProductData(null);
+          loadImages(json.searchResults.map((p: any) => p.id));
         } else {
-          console.log('Product data received:', json);
           setProductData(json);
           setSearchResults([]);
+          if (json.variants?.length > 0) {
+            loadImages(json.variants.map((v: any) => v.id));
+          }
         }
       } else {
         alert(`Product niet gevonden: ${json.error || 'Onbekende fout'}`);
@@ -58,6 +90,7 @@ export default function VoorraadOpzoekenPage() {
     setScanLoading(true);
     setSearchResults([]);
     setProductData(null);
+    setImageMap({});
     
     try {
       const res = await fetch('/api/scan-product', {
@@ -70,6 +103,9 @@ export default function VoorraadOpzoekenPage() {
       
       if (json.success) {
         setProductData(json);
+        if (json.variants?.length > 0) {
+          loadImages(json.variants.map((v: any) => v.id));
+        }
       } else {
         alert(`Product niet gevonden: ${json.error || 'Onbekende fout'}`);
       }
@@ -125,6 +161,7 @@ export default function VoorraadOpzoekenPage() {
                       setBarcode('');
                       setSearchResults([]);
                       setProductData(null);
+                      setImageMap({});
                     }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
@@ -194,10 +231,10 @@ export default function VoorraadOpzoekenPage() {
                       onClick={() => handleSelectProduct(product.id)}
                       className="border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-500 hover:shadow-lg cursor-pointer transition-all"
                     >
-                      {product.image ? (
+                      {imageMap[product.id] ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img 
-                          src={`data:image/png;base64,${product.image}`}
+                          src={`data:image/png;base64,${imageMap[product.id]}`}
                           alt={product.name}
                           className="w-full h-40 object-cover"
                           onError={(e) => {
@@ -206,7 +243,11 @@ export default function VoorraadOpzoekenPage() {
                         />
                       ) : (
                         <div className="w-full h-40 bg-gray-100 flex items-center justify-center">
-                          <span className="text-gray-400 text-5xl">📦</span>
+                          {imagesLoading ? (
+                            <span className="text-gray-300 text-sm animate-pulse">Laden...</span>
+                          ) : (
+                            <span className="text-gray-400 text-5xl">📦</span>
+                          )}
                         </div>
                       )}
                       <div className="p-3">
@@ -281,11 +322,11 @@ export default function VoorraadOpzoekenPage() {
                           : 'border-gray-200 hover:shadow-md'
                       }`}
                     >
-                      {variant.image ? (
+                      {imageMap[variant.id] ? (
                         <div className="mb-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img 
-                            src={`data:image/png;base64,${variant.image}`}
+                            src={`data:image/png;base64,${imageMap[variant.id]}`}
                             alt={variant.name}
                             className="w-full h-48 object-cover rounded-lg"
                             onError={(e) => {
@@ -295,7 +336,11 @@ export default function VoorraadOpzoekenPage() {
                         </div>
                       ) : (
                         <div className="mb-3 bg-gray-100 h-48 rounded-lg flex items-center justify-center">
-                          <span className="text-gray-400 text-4xl">📦</span>
+                          {imagesLoading ? (
+                            <span className="text-gray-300 text-sm animate-pulse">Laden...</span>
+                          ) : (
+                            <span className="text-gray-400 text-4xl">📦</span>
+                          )}
                         </div>
                       )}
                       
@@ -352,4 +397,3 @@ export default function VoorraadOpzoekenPage() {
     </div>
   );
 }
-

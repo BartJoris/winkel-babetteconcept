@@ -82,6 +82,7 @@ interface LabelProduct {
   name: string;
   barcode: string | null;
   list_price: number;
+  attributes: string | null;
 }
 
 function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string, string>): string {
@@ -96,6 +97,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
     return `
       <div class="label">
         <div class="product-name">${escapeHtml(product.name)}</div>
+        ${product.attributes ? `<div class="attributes">${escapeHtml(product.attributes)}</div>` : ''}
         <div class="price">${price}</div>
         ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" class="barcode" alt="Barcode" />` : ''}
         ${product.barcode ? `<div class="barcode-text">${escapeHtml(product.barcode)}</div>` : ''}
@@ -151,6 +153,12 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       -webkit-box-orient: vertical;
       line-height: 1.2;
       width: 100%;
+    }
+    .attributes {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 0.5mm;
     }
     .price {
       font-size: 11pt;
@@ -214,18 +222,55 @@ export default async function handler(
       method: 'search_read',
       args: [[['id', 'in', productIds]]],
       kwargs: {
-        fields: ['id', 'name', 'barcode', 'list_price'],
+        fields: ['id', 'name', 'barcode', 'list_price', 'product_template_attribute_value_ids'],
       },
     });
+
+    // Fetch attribute values to resolve maat/size
+    const allAttrIds: number[] = [];
+    for (const p of products) {
+      if (Array.isArray(p.product_template_attribute_value_ids)) {
+        allAttrIds.push(...p.product_template_attribute_value_ids);
+      }
+    }
+
+    const attributeValueMap: Record<number, { name: string; attributeName: string }> = {};
+    if (allAttrIds.length > 0) {
+      const uniqueIds = [...new Set(allAttrIds)];
+      const attrValues = await odooCall<any[]>({
+        uid,
+        password,
+        model: 'product.template.attribute.value',
+        method: 'search_read',
+        args: [[['id', 'in', uniqueIds]]],
+        kwargs: {
+          fields: ['id', 'name', 'attribute_id'],
+        },
+      });
+      for (const av of attrValues) {
+        const attrName = av.attribute_id && typeof av.attribute_id !== 'boolean'
+          ? av.attribute_id[1]
+          : '';
+        attributeValueMap[av.id] = { name: av.name, attributeName: attrName };
+      }
+    }
 
     // Maintain the order of productIds (may contain duplicates for multiple labels)
     const productMap = new Map<number, LabelProduct>();
     for (const p of products) {
+      const attrIds: number[] = p.product_template_attribute_value_ids || [];
+      const attributes = attrIds
+        .map((id: number) => attributeValueMap[id])
+        .filter((attr) => attr && !attr.attributeName.toLowerCase().includes('merk'))
+        .map((attr) => attr.name)
+        .join(', ');
+
       productMap.set(p.id, {
         id: p.id,
         name: p.name,
         barcode: p.barcode || null,
         list_price: p.list_price || 0,
+        attributes: attributes || null,
       });
     }
 

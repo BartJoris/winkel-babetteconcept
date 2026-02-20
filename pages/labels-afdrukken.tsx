@@ -8,6 +8,7 @@ interface ScannedProduct {
   list_price: number;
   qty_available: number;
   image: string | null;
+  attributes: string | null;
   count: number;
   stockStatus?: 'success' | 'error' | 'pending';
   stockError?: string;
@@ -63,7 +64,7 @@ export default function LabelsAfdrukkenPage() {
           if (scannedVariant) {
             addProduct({
               id: scannedVariant.id,
-              name: json.productName || scannedVariant.name,
+              name: scannedVariant.name || json.productName,
               barcode: scannedVariant.barcode,
               list_price: scannedVariant.list_price,
               qty_available: scannedVariant.qty_available,
@@ -104,6 +105,7 @@ export default function LabelsAfdrukkenPage() {
           list_price: product.list_price || 0,
           qty_available: product.qty_available || 0,
           image: product.image || null,
+          attributes: product.attributes || null,
           count: 1,
         },
       ];
@@ -316,15 +318,21 @@ export default function LabelsAfdrukkenPage() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full table-fixed">
+                  <colgroup>
+                    <col />
+                    <col className="hidden sm:table-column w-[20%]" />
+                    <col className="w-[15%] sm:w-[10%]" />
+                    <col className="w-[22%] sm:w-[15%]" />
+                    <col className="w-[8%] sm:w-[6%]" />
+                  </colgroup>
                   <thead>
                     <tr className="border-b-2 border-gray-200">
                       <th className="text-left py-3 px-2 text-sm font-semibold text-gray-700">Product</th>
                       <th className="text-left py-3 px-2 text-sm font-semibold text-gray-700 hidden sm:table-cell">Barcode</th>
                       <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700">Prijs</th>
-                      <th className="text-right py-3 px-2 text-sm font-semibold text-gray-700">Voorraad</th>
                       <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700">Aantal</th>
-                      <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700 w-10"></th>
+                      <th className="text-center py-3 px-2 text-sm font-semibold text-gray-700"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -358,10 +366,26 @@ export default function LabelsAfdrukkenPage() {
                                 <span className="text-gray-400 text-sm">📦</span>
                               </div>
                             )}
-                            <div className="min-w-0">
-                              <p className="font-medium text-gray-900 text-sm truncate max-w-[200px] sm:max-w-[300px]">
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm break-words">
                                 {product.name}
                               </p>
+                              <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                {product.attributes && (
+                                  <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                                    {product.attributes}
+                                  </span>
+                                )}
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                  product.qty_available > 0
+                                    ? 'text-green-700 bg-green-100'
+                                    : product.qty_available === 0
+                                    ? 'text-orange-700 bg-orange-100'
+                                    : 'text-red-700 bg-red-100'
+                                }`}>
+                                  Voorraad: {product.qty_available}
+                                </span>
+                              </div>
                               {product.stockStatus === 'success' && (
                                 <span className="text-xs text-green-600 font-medium">✅ Voorraad aangepast</span>
                               )}
@@ -379,19 +403,6 @@ export default function LabelsAfdrukkenPage() {
                         </td>
                         <td className="py-3 px-2 text-sm text-right font-semibold text-gray-900">
                           {formatEuro(product.list_price)}
-                        </td>
-                        <td className="py-3 px-2 text-right">
-                          <span
-                            className={`text-sm font-bold ${
-                              product.qty_available > 0
-                                ? 'text-green-600'
-                                : product.qty_available === 0
-                                ? 'text-orange-600'
-                                : 'text-red-600'
-                            }`}
-                          >
-                            {product.qty_available}
-                          </span>
                         </td>
                         <td className="py-3 px-2">
                           <div className="flex items-center justify-center gap-1">

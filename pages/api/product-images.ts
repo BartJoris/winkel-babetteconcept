@@ -69,7 +69,7 @@ export default async function handler(
       return res.status(400).json({ error: 'productIds array is required' });
     }
 
-    // Fetch images for all products in batch
+    // Fetch thumbnail images for all products in batch (image_256 is much smaller than image_1920)
     const products = await odooCall<any[]>({
       uid,
       password,
@@ -77,14 +77,13 @@ export default async function handler(
       method: 'search_read',
       args: [[['id', 'in', productIds]]],
       kwargs: {
-        fields: ['id', 'image_1920'],
+        fields: ['id', 'image_256'],
       },
     });
 
-    // Build a map of product ID to image
     const imageMap: Record<number, string | null> = {};
     products.forEach(product => {
-      imageMap[product.id] = product.image_1920 || null;
+      imageMap[product.id] = product.image_256 || null;
     });
 
     return res.status(200).json({ images: imageMap });

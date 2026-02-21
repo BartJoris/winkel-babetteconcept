@@ -26,11 +26,13 @@ export default function VoorraadOpzoekenPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productIds }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.error('Product images API returned', res.status);
+        return;
+      }
       const json = await res.json();
-      // Only apply if this is still the latest request
       if (requestId === imageRequestRef.current && json.images) {
-        setImageMap(json.images);
+        setImageMap((prev) => ({ ...prev, ...json.images }));
       }
     } catch (err) {
       console.error('Error loading images:', err);

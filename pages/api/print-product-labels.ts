@@ -92,12 +92,14 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
     });
 
     return `
-      <div class="label">
-        <div class="product-name">${escapeHtml(product.name)}</div>
-        ${product.attributes ? `<div class="attributes">${escapeHtml(product.attributes)}</div>` : ''}
-        <div class="price">${price}</div>
-        ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" class="barcode" alt="Barcode" />` : ''}
-        ${product.barcode ? `<div class="barcode-text">${escapeHtml(product.barcode)}</div>` : ''}
+      <div class="page">
+        <div class="label">
+          <div class="product-name">${escapeHtml(product.name)}</div>
+          ${product.attributes ? `<div class="attributes">${escapeHtml(product.attributes)}</div>` : ''}
+          <div class="price">${price}</div>
+          ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" class="barcode" alt="Barcode" />` : ''}
+          ${product.barcode ? `<div class="barcode-text">${escapeHtml(product.barcode)}</div>` : ''}
+        </div>
       </div>`;
   });
 
@@ -109,7 +111,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
   <title>Product Labels</title>
   <style>
     @page {
-      size: 62mm 29mm landscape;
+      size: 25mm 54mm;
       margin: 0;
     }
     * {
@@ -122,27 +124,37 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       padding: 0;
       font-family: Arial, sans-serif;
     }
+    .page {
+      width: 25mm;
+      height: 54mm;
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+    }
+    .page:last-child {
+      page-break-after: auto;
+    }
     .label {
-      width: 62mm;
-      height: 29mm;
+      width: 54mm;
+      height: 25mm;
       padding: 1.5mm 2mm;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
-      page-break-after: always;
-      overflow: hidden;
-    }
-    .label:last-child {
-      page-break-after: auto;
+      position: absolute;
+      top: 0;
+      left: 25mm;
+      transform-origin: top left;
+      transform: rotate(90deg);
     }
     .product-name {
       font-size: 8pt;
       font-weight: bold;
       color: #000;
       margin-bottom: 1mm;
-      max-height: 8mm;
+      max-height: 7mm;
       overflow: hidden;
       text-overflow: ellipsis;
       display: -webkit-box;
@@ -152,21 +164,21 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       width: 100%;
     }
     .attributes {
-      font-size: 9pt;
+      font-size: 8pt;
       font-weight: bold;
       color: #333;
       margin-bottom: 0.5mm;
     }
     .price {
-      font-size: 11pt;
+      font-size: 10pt;
       font-weight: bold;
       color: #000;
       margin-bottom: 1mm;
     }
     .barcode {
-      max-width: 54mm;
+      max-width: 48mm;
       height: auto;
-      max-height: 8mm;
+      max-height: 7mm;
       margin-bottom: 0.5mm;
     }
     .barcode-text {

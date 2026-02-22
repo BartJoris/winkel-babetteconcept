@@ -223,6 +223,17 @@ export default function LabelsAfdrukkenPage() {
       const html = await res.text();
       labelWindow.document.write(html);
       labelWindow.document.close();
+
+      // After print dialog closes, ask to clear the list
+      const checkClosed = setInterval(() => {
+        if (labelWindow.closed) {
+          clearInterval(checkClosed);
+          if (confirm('Labels afgedrukt. Wil je de lijst leegmaken?')) {
+            setScannedProducts([]);
+            focusInput();
+          }
+        }
+      }, 500);
     } catch (err) {
       console.error('Error printing labels:', err);
       alert('Fout bij afdrukken van labels');

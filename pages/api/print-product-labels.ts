@@ -51,11 +51,8 @@ async function odooCall<T>(params: {
 
 async function generateBarcode(text: string): Promise<string> {
   try {
-    const isEan13 = /^\d{13}$/.test(text);
-    const isEan8 = /^\d{8}$/.test(text);
-
     const png = await bwipjs.toBuffer({
-      bcid: isEan13 ? 'ean13' : isEan8 ? 'ean8' : 'code128',
+      bcid: 'code128',
       text,
       scale: 3,
       height: 10,
@@ -112,7 +109,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
   <title>Product Labels</title>
   <style>
     @page {
-      size: 62mm 29mm;
+      size: 62mm 29mm landscape;
       margin: 0;
     }
     * {

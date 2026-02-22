@@ -8,6 +8,7 @@ interface ScannedProduct {
   list_price: number;
   qty_available: number;
   attributes: string | null;
+  sizeRange: string | null;
   count: number;
   stockStatus?: 'success' | 'error' | 'pending';
   stockError?: string;
@@ -68,6 +69,7 @@ export default function LabelsAfdrukkenPage() {
               list_price: scannedVariant.list_price,
               qty_available: scannedVariant.qty_available,
               attributes: scannedVariant.attributes,
+              sizeRange: json.sizeRange,
             });
           }
         }
@@ -103,6 +105,7 @@ export default function LabelsAfdrukkenPage() {
           list_price: product.list_price || 0,
           qty_available: product.qty_available || 0,
           attributes: product.attributes || null,
+          sizeRange: product.sizeRange || null,
           count: 1,
         },
       ];
@@ -367,15 +370,11 @@ export default function LabelsAfdrukkenPage() {
                                 {product.attributes}
                               </span>
                             )}
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                              product.qty_available > 0
-                                ? 'text-green-700 bg-green-100'
-                                : product.qty_available === 0
-                                ? 'text-orange-700 bg-orange-100'
-                                : 'text-red-700 bg-red-100'
-                            }`}>
-                              Voorraad: {product.qty_available}
-                            </span>
+                            {product.sizeRange && (
+                              <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
+                                {product.sizeRange}
+                              </span>
+                            )}
                           </div>
                           {product.stockStatus === 'success' && (
                             <span className="text-xs text-green-600 font-medium">✅ Voorraad aangepast</span>

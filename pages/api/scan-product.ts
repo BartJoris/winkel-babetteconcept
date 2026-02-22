@@ -160,10 +160,61 @@ export default async function handler(
         .map(attr => attr.name)
         .join(', ');
 
+      // Fetch size range from sibling variants
+      let sizeRange: string | null = null;
+      const templateId = p.product_tmpl_id && typeof p.product_tmpl_id !== 'boolean'
+        ? p.product_tmpl_id[0]
+        : null;
+      if (templateId) {
+        const siblings = await odooCall<any[]>({
+          uid,
+          password,
+          model: 'product.product',
+          method: 'search_read',
+          args: [[
+            ['product_tmpl_id', '=', templateId],
+            ['active', '=', true]
+          ]],
+          kwargs: {
+            fields: ['id', 'product_template_attribute_value_ids'],
+          },
+        });
+
+        const allSiblingAttrIds: number[] = [];
+        for (const s of siblings) {
+          if (Array.isArray(s.product_template_attribute_value_ids)) {
+            allSiblingAttrIds.push(...s.product_template_attribute_value_ids);
+          }
+        }
+        const siblingAttrMap = await fetchAttributeValues(uid, password, allSiblingAttrIds);
+
+        const sizeValues: string[] = [];
+        for (const s of siblings) {
+          const sAttrIds: number[] = s.product_template_attribute_value_ids || [];
+          const size = sAttrIds
+            .map(id => siblingAttrMap[id])
+            .filter(attr => attr && !attr.attributeName.toLowerCase().includes('merk'))
+            .map(attr => attr.name)
+            .join(', ');
+          if (size) sizeValues.push(size);
+        }
+
+        if (sizeValues.length > 1) {
+          sizeValues.sort((a, b) => {
+            const aNum = a.match(/(\d+)/);
+            const bNum = b.match(/(\d+)/);
+            if (aNum && bNum) return parseInt(aNum[1]) - parseInt(bNum[1]);
+            return a.localeCompare(b);
+          });
+          sizeRange = `${sizeValues[0]} - ${sizeValues[sizeValues.length - 1]}`;
+        }
+      }
+
       return res.status(200).json({
         success: true,
         productName: p.name,
         scannedVariantId: p.id,
+        sizeRange,
         variants: [{
           id: p.id,
           name: p.name,

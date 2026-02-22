@@ -66,6 +66,13 @@ async function generateBarcode(text: string): Promise<string> {
   }
 }
 
+function abbreviateRange(range: string): string {
+  return range
+    .replace(/\s*-\s*/g, '/')
+    .replace(/\s*maand/gi, 'm')
+    .replace(/\s*jaar/gi, 'j');
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -80,6 +87,7 @@ interface LabelProduct {
   barcode: string | null;
   list_price: number;
   attributes: string | null;
+  sizeRange: string | null;
 }
 
 function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string, string>): string {
@@ -94,7 +102,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
     return `
       <div class="label">
         <div class="product-name">${escapeHtml(product.name)}</div>
-        ${product.attributes ? `<div class="attributes">${escapeHtml(product.attributes)}</div>` : ''}
+        ${product.attributes ? `<div class="attributes">${escapeHtml(product.attributes)}${product.sizeRange ? ` (${escapeHtml(abbreviateRange(product.sizeRange))})` : ''}</div>` : product.sizeRange ? `<div class="attributes">(${escapeHtml(abbreviateRange(product.sizeRange))})</div>` : ''}
         <div class="price">${price}</div>
         ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" class="barcode" alt="Barcode" />` : ''}
         ${product.barcode ? `<div class="barcode-text">${escapeHtml(product.barcode)}</div>` : ''}
@@ -204,7 +212,7 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { productIds } = req.body as { productIds: number[] };
+    const { productIds, sizeRangeMap } = req.body as { productIds: number[]; sizeRangeMap?: Record<number, string> };
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs array is required' });
@@ -268,6 +276,7 @@ export default async function handler(
         barcode: p.barcode || null,
         list_price: p.list_price || 0,
         attributes: attributes || null,
+        sizeRange: sizeRangeMap?.[p.id] || null,
       });
     }
 

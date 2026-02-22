@@ -196,9 +196,10 @@ export default function LabelsAfdrukkenPage() {
 
     setPrintingLabels(true);
     try {
-      // Build array of product IDs, repeated by count (1 label per count)
       const productIds: number[] = [];
+      const sizeRangeMap: Record<number, string> = {};
       for (const p of scannedProducts) {
+        if (p.sizeRange) sizeRangeMap[p.id] = p.sizeRange;
         for (let i = 0; i < p.count; i++) {
           productIds.push(p.id);
         }
@@ -213,7 +214,7 @@ export default function LabelsAfdrukkenPage() {
       const res = await fetch('/api/print-product-labels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds }),
+        body: JSON.stringify({ productIds, sizeRangeMap }),
       });
 
       if (!res.ok) {
@@ -375,6 +376,15 @@ export default function LabelsAfdrukkenPage() {
                                 {product.sizeRange}
                               </span>
                             )}
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                              product.qty_available > 0
+                                ? 'text-green-700 bg-green-100'
+                                : product.qty_available === 0
+                                ? 'text-orange-700 bg-orange-100'
+                                : 'text-red-700 bg-red-100'
+                            }`}>
+                              Voorraad: {product.qty_available}
+                            </span>
                           </div>
                           {product.stockStatus === 'success' && (
                             <span className="text-xs text-green-600 font-medium">✅ Voorraad aangepast</span>

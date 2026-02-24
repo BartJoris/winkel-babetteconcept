@@ -116,67 +116,69 @@ export default async function handler(
       },
     });
 
-    // Fetch partner details and order lines
-    const enrichedOrders: PendingOrder[] = [];
+    const orderIds = orders.map((o: any) => o.id);
+    const partnerIds = [...new Set(
+      orders
+        .map((o: any) => o.partner_id && typeof o.partner_id !== 'boolean' ? o.partner_id[0] : null)
+        .filter((id: number | null): id is number => id !== null)
+    )];
 
-    for (const order of orders) {
-      // Get partner details
-      const partnerId = order.partner_id && typeof order.partner_id !== 'boolean' ? order.partner_id[0] : null;
-      let partnerDetails: any = {};
+    const [allPartners, allOrderLines, allPickings] = await Promise.all([
+      partnerIds.length > 0
+        ? odooCall<any[]>({
+            uid,
+            password,
+            model: 'res.partner',
+            method: 'search_read',
+            args: [[['id', 'in', partnerIds]]],
+            kwargs: {
+              fields: ['name', 'email', 'phone', 'street', 'city', 'zip', 'country_id'],
+            },
+          })
+        : Promise.resolve([]),
 
-      if (partnerId) {
-        const partners = await odooCall<any[]>({
-          uid,
-          password,
-          model: 'res.partner',
-          method: 'search_read',
-          args: [[['id', '=', partnerId]]],
-          kwargs: {
-            fields: ['name', 'email', 'phone', 'street', 'city', 'zip', 'country_id'],
-            limit: 1,
-          },
-        });
-
-        if (partners.length > 0) {
-          partnerDetails = partners[0];
-        }
-      }
-
-      // Get order lines
-      const orderLines = await odooCall<any[]>({
+      odooCall<any[]>({
         uid,
         password,
         model: 'sale.order.line',
         method: 'search_read',
-        args: [[['order_id', '=', order.id]]],
+        args: [[['order_id', 'in', orderIds]]],
         kwargs: {
-          fields: ['product_id', 'product_uom_qty', 'price_unit', 'price_total'],
+          fields: ['order_id', 'product_id', 'product_uom_qty', 'price_unit', 'price_total'],
         },
-      });
+      }),
 
-      // Get picking/delivery state to know if delivery needs confirmation
-      let pickingState = null;
-      try {
-        const pickings = await odooCall<any[]>({
-          uid,
-          password,
-          model: 'stock.picking',
-          method: 'search_read',
-          args: [[['sale_id', '=', order.id]]],
-          kwargs: {
-            fields: ['state'],
-            limit: 1,
-          },
-        });
-        if (pickings.length > 0) {
-          pickingState = pickings[0].state;
-        }
-      } catch (err) {
-        // If picking fetch fails, just continue without it
-        console.log(`Could not fetch picking state for order ${order.id}`);
-      }
+      odooCall<any[]>({
+        uid,
+        password,
+        model: 'stock.picking',
+        method: 'search_read',
+        args: [[['sale_id', 'in', orderIds]]],
+        kwargs: {
+          fields: ['sale_id', 'state'],
+        },
+      }).catch(() => [] as any[]),
+    ]);
 
-      enrichedOrders.push({
+    const partnerMap = new Map(allPartners.map((p: any) => [p.id, p]));
+    const orderLinesMap = new Map<number, any[]>();
+    for (const line of allOrderLines) {
+      const oid = line.order_id[0];
+      if (!orderLinesMap.has(oid)) orderLinesMap.set(oid, []);
+      orderLinesMap.get(oid)!.push(line);
+    }
+    const pickingMap = new Map<number, string>();
+    for (const picking of allPickings) {
+      const sid = picking.sale_id[0];
+      if (!pickingMap.has(sid)) pickingMap.set(sid, picking.state);
+    }
+
+    const enrichedOrders: PendingOrder[] = orders.map((order: any) => {
+      const partnerId = order.partner_id && typeof order.partner_id !== 'boolean' ? order.partner_id[0] : null;
+      const partnerDetails = partnerId ? partnerMap.get(partnerId) || {} : {};
+      const orderLines = orderLinesMap.get(order.id) || [];
+
+      return {
         id: order.id,
         name: order.name,
         date_order: order.date_order,
@@ -188,20 +190,20 @@ export default async function handler(
         partner_street: partnerDetails.street || null,
         partner_city: partnerDetails.city || null,
         partner_zip: partnerDetails.zip || null,
-        partner_country: partnerDetails.country_id && typeof partnerDetails.country_id !== 'boolean' 
-          ? partnerDetails.country_id[1] 
+        partner_country: partnerDetails.country_id && typeof partnerDetails.country_id !== 'boolean'
+          ? partnerDetails.country_id[1]
           : null,
         state: order.state,
         website_id: order.website_id,
-        picking_state: pickingState,
+        picking_state: pickingMap.get(order.id) || null,
         order_line: orderLines.map((line: any) => ({
           product_id: line.product_id,
           product_uom_qty: line.product_uom_qty,
           price_unit: line.price_unit,
           price_total: line.price_total,
         })),
-      });
-    }
+      };
+    });
 
     return res.status(200).json({ orders: enrichedOrders });
   } catch (error) {

@@ -119,6 +119,12 @@ export default function LabelsAfdrukkenPage() {
     );
   };
 
+  const updateField = (id: number, field: 'name' | 'attributes', value: string) => {
+    setScannedProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value || null } : p))
+    );
+  };
+
   const removeProduct = (id: number) => {
     setScannedProducts((prev) => prev.filter((p) => p.id !== id));
   };
@@ -197,9 +203,13 @@ export default function LabelsAfdrukkenPage() {
     setPrintingLabels(true);
     try {
       const productIds: number[] = [];
-      const sizeRangeMap: Record<number, string> = {};
+      const overrides: Record<number, { name?: string; attributes?: string; sizeRange?: string }> = {};
       for (const p of scannedProducts) {
-        if (p.sizeRange) sizeRangeMap[p.id] = p.sizeRange;
+        overrides[p.id] = {
+          name: p.name,
+          attributes: p.attributes || undefined,
+          sizeRange: p.sizeRange || undefined,
+        };
         for (let i = 0; i < p.count; i++) {
           productIds.push(p.id);
         }
@@ -214,7 +224,7 @@ export default function LabelsAfdrukkenPage() {
       const res = await fetch('/api/print-product-labels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds, sizeRangeMap }),
+        body: JSON.stringify({ productIds, overrides }),
       });
 
       if (!res.ok) {
@@ -362,15 +372,22 @@ export default function LabelsAfdrukkenPage() {
                         }`}
                       >
                         <td className="py-3 px-2">
-                          <p className="font-medium text-gray-900 text-sm break-words">
-                            {product.name}
-                          </p>
+                          <input
+                            type="text"
+                            value={product.name}
+                            onChange={(e) => updateField(product.id, 'name', e.target.value)}
+                            className="w-full font-medium text-gray-900 text-sm break-words bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none py-0.5 transition-colors"
+                            title="Klik om naam te bewerken (alleen voor afdruk)"
+                          />
                           <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                            {product.attributes && (
-                              <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                                {product.attributes}
-                              </span>
-                            )}
+                            <input
+                              type="text"
+                              value={product.attributes || ''}
+                              onChange={(e) => updateField(product.id, 'attributes', e.target.value)}
+                              placeholder="Maat..."
+                              className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-transparent hover:border-blue-300 focus:border-blue-500 focus:outline-none w-20 transition-colors"
+                              title="Klik om maat te bewerken (alleen voor afdruk)"
+                            />
                             {product.sizeRange && (
                               <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
                                 {product.sizeRange}

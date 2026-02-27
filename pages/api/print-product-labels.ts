@@ -212,7 +212,10 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { productIds, sizeRangeMap } = req.body as { productIds: number[]; sizeRangeMap?: Record<number, string> };
+    const { productIds, overrides } = req.body as {
+      productIds: number[];
+      overrides?: Record<number, { name?: string; attributes?: string; sizeRange?: string }>;
+    };
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs array is required' });
@@ -270,13 +273,14 @@ export default async function handler(
         .map((attr) => attr.name)
         .join(', ');
 
+      const ov = overrides?.[p.id];
       productMap.set(p.id, {
         id: p.id,
-        name: p.name,
+        name: ov?.name || p.name,
         barcode: p.barcode || null,
         list_price: p.list_price || 0,
-        attributes: attributes || null,
-        sizeRange: sizeRangeMap?.[p.id] || null,
+        attributes: (ov?.attributes ?? attributes) || null,
+        sizeRange: ov?.sizeRange || null,
       });
     }
 

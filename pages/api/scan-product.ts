@@ -200,10 +200,19 @@ export default async function handler(
         }
 
         if (sizeValues.length > 1) {
+          const toMonths = (s: string): number | null => {
+            const m = s.match(/(\d+)\s*maand/i);
+            if (m) return parseInt(m[1]);
+            const j = s.match(/(\d+)\s*jaar/i);
+            if (j) return parseInt(j[1]) * 12;
+            const n = s.match(/(\d+)/);
+            if (n) return parseInt(n[1]);
+            return null;
+          };
           sizeValues.sort((a, b) => {
-            const aNum = a.match(/(\d+)/);
-            const bNum = b.match(/(\d+)/);
-            if (aNum && bNum) return parseInt(aNum[1]) - parseInt(bNum[1]);
+            const aVal = toMonths(a);
+            const bVal = toMonths(b);
+            if (aVal !== null && bVal !== null) return aVal - bVal;
             return a.localeCompare(b);
           });
           sizeRange = `${sizeValues[0]} - ${sizeValues[sizeValues.length - 1]}`;

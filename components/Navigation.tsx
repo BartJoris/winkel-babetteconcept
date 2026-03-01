@@ -49,6 +49,7 @@ export default function Navigation() {
     { path: '/labels-afdrukken', label: 'Labels', icon: '🏷️' },
     { path: '/webshoporders-beheren', label: 'Webshoporders', icon: '📦' },
     { path: '/cadeaubon-aanmaken', label: 'Cadeaubon', icon: '🎁' },
+    { path: '/afval', label: 'Afval', icon: '♻️' },
   ];
 
   return (

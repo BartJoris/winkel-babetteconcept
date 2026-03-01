@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { randomUUID } from 'crypto';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
 
@@ -157,10 +158,14 @@ export default async function handler(
       console.log('ℹ️ No customer specified - creating anonymous voucher');
     }
 
-    // Create the loyalty card directly (simpler approach)
+    // Generate a code without hyphens so Odoo (scan, invoer) er goed mee overweg kan
+    const codeWithoutHyphens = randomUUID().replace(/-/g, '');
+
+    // Create the loyalty card with our code (no hyphens)
     const cardData: any = {
       program_id: programId,
       points: amount,
+      code: codeWithoutHyphens,
     };
 
     // Only add partner_id if customer was specified

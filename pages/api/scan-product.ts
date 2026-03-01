@@ -104,6 +104,32 @@ async function odooCall<T>(params: {
   return json.result as T;
 }
 
+/** Zoek cadeaubon/loyalty card op code (probeer exact, uppercase, lowercase voor scanner-compatibiliteit). */
+async function findLoyaltyCardByCode(
+  uid: number,
+  password: string,
+  code: string
+): Promise<{ id: number; code: string; points: number; expiration_date?: string } | null> {
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+  const variants = [trimmed, trimmed.toUpperCase(), trimmed.toLowerCase()];
+  for (const c of variants) {
+    const cards = await odooCall<any[]>({
+      uid,
+      password,
+      model: 'loyalty.card',
+      method: 'search_read',
+      args: [[['code', '=', c]]],
+      kwargs: {
+        fields: ['id', 'code', 'points', 'expiration_date'],
+        limit: 1,
+      },
+    });
+    if (cards.length > 0) return cards[0];
+  }
+  return null;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -144,6 +170,20 @@ export default async function handler(
       });
 
       if (products.length === 0) {
+        const giftCard = await findLoyaltyCardByCode(uid, password, barcode.trim());
+        if (giftCard) {
+          return res.status(200).json({
+            success: true,
+            isGiftCard: true,
+            giftCard: {
+              id: giftCard.id,
+              code: giftCard.code,
+              points: giftCard.points,
+              balance: giftCard.points,
+              expiration_date: giftCard.expiration_date ?? undefined,
+            },
+          });
+        }
         return res.status(404).json({
           success: false,
           error: `Geen product gevonden met barcode: ${barcode}`,
@@ -315,6 +355,20 @@ export default async function handler(
       });
 
       if (products.length === 0) {
+        const giftCard = await findLoyaltyCardByCode(uid, password, barcode);
+        if (giftCard) {
+          return res.status(200).json({
+            success: true,
+            isGiftCard: true,
+            giftCard: {
+              id: giftCard.id,
+              code: giftCard.code,
+              points: giftCard.points,
+              balance: giftCard.points,
+              expiration_date: giftCard.expiration_date ?? undefined,
+            },
+          });
+        }
         console.log('❌ No product found with name containing:', barcode);
         return res.status(404).json({ 
           success: false,

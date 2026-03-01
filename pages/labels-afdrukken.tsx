@@ -60,7 +60,11 @@ export default function LabelsAfdrukkenPage() {
       const json = await res.json();
 
       if (json.success) {
-        if (json.isSearchResults) {
+        if (json.isGiftCard && json.giftCard) {
+          const g = json.giftCard;
+          const expiry = g.expiration_date ? new Date(g.expiration_date).toLocaleDateString('nl-BE') : '';
+          alert(`🎁 Cadeaubon herkend\n\nCode: ${g.code}\nSaldo: €${Number(g.balance ?? g.points ?? 0).toFixed(2)}${expiry ? `\nGeldig tot: ${expiry}` : ''}\n\nGebruik de kassa (Odoo POS) om de bon te verzilveren.`);
+        } else if (json.isSearchResults) {
           // Multiple results - we can't auto-add, but take the first exact barcode match
           const exactMatch = json.searchResults.find(
             (p: any) => p.barcode === trimmed

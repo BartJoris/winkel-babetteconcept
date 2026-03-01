@@ -159,7 +159,8 @@ export default async function handler(
     }
 
     // Korte code zonder streepjes: Odoo-compatibel én korte barcode die goed scant (zoals de oude 12-tekens codes)
-    const codeWithoutHyphens = randomUUID().replace(/-/g, '').slice(0, 12);
+    // Hoofdletters zodat scanners (vaak uppercase output) de code in Odoo terugvinden
+    const codeWithoutHyphens = randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase();
 
     // Create the loyalty card with our code (no hyphens)
     const cardData: any = {

@@ -66,7 +66,10 @@ export default function VoorraadOpzoekenPage() {
       const json = await res.json();
       
       if (json.success) {
-        if (json.isSearchResults) {
+        if (json.isGiftCard && json.giftCard) {
+          setSearchResults([]);
+          setProductData({ isGiftCard: true, giftCard: json.giftCard });
+        } else if (json.isSearchResults) {
           setSearchResults(json.searchResults);
           setProductData(null);
           loadImages(json.searchResults.map((p: any) => p.id));
@@ -295,9 +298,31 @@ export default function VoorraadOpzoekenPage() {
             )}
           </div>
 
-          {/* Product Variant Results */}
+          {/* Product Variant Results / Cadeaubon */}
           {productData && (
             <div className="bg-white shadow-xl rounded-2xl p-6">
+              {productData.isGiftCard && productData.giftCard ? (
+                <>
+                  <h2 className="text-xl font-bold text-gray-900 mb-4">
+                    🎁 Cadeaubon
+                  </h2>
+                  <div className="mb-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                    <h3 className="text-lg font-semibold text-gray-900 font-mono">{productData.giftCard.code}</h3>
+                    <div className="flex gap-4 mt-2 text-sm">
+                      <p className="text-gray-700">
+                        <strong>Saldo:</strong> €{Number(productData.giftCard.balance ?? productData.giftCard.points ?? 0).toFixed(2)}
+                      </p>
+                      {productData.giftCard.expiration_date && (
+                        <p className="text-gray-700">
+                          <strong>Geldig tot:</strong> {new Date(productData.giftCard.expiration_date).toLocaleDateString('nl-BE')}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-xs text-amber-800 mt-2">Gebruik de kassa (Odoo POS) om deze bon te verzilveren.</p>
+                  </div>
+                </>
+              ) : (
+                <>
               <h2 className="text-xl font-bold text-gray-900 mb-4">
                 📊 Voorraad Varianten
               </h2>
@@ -391,6 +416,8 @@ export default function VoorraadOpzoekenPage() {
                 </div>
               ) : (
                 <p className="text-gray-600 text-center py-8">Geen varianten gevonden</p>
+              )}
+                </>
               )}
             </div>
           )}

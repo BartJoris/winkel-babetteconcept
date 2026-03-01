@@ -1,11 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
+type PrinterType = 'zebra' | 'dymo';
+
 export default function CadeaubonAanmakenPage() {
   const { isLoading } = useAuth();
   const [voucherAmount, setVoucherAmount] = useState('');
   const [voucherExpiry, setVoucherExpiry] = useState('');
   const [creatingVoucher, setCreatingVoucher] = useState(false);
+  const [printer, setPrinter] = useState<PrinterType>('zebra');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('labelPrinter') as PrinterType | null;
+    if (saved === 'dymo' || saved === 'zebra') setPrinter(saved);
+  }, []);
+
+  const togglePrinter = () => {
+    const next: PrinterType = printer === 'zebra' ? 'dymo' : 'zebra';
+    setPrinter(next);
+    localStorage.setItem('labelPrinter', next);
+  };
 
   // Set default expiry date to 1 year from today
   useEffect(() => {
@@ -47,8 +61,9 @@ export default function CadeaubonAanmakenPage() {
         const points = voucher.points || amount;
         
         // Ask if user wants to print label
+        const printerName = printer === 'zebra' ? 'Zebra' : 'Dymo';
         const printLabel = confirm(
-          `✅ Cadeaubon aangemaakt!\n\n📋 Code: ${code}\n💰 Waarde: €${points}\n${voucher.expiration_date ? `📅 Geldig tot: ${new Date(voucher.expiration_date).toLocaleDateString('nl-BE')}\n` : ''}\n\n🖨️ Wil je een label printen voor de Dymo printer?`
+          `✅ Cadeaubon aangemaakt!\n\n📋 Code: ${code}\n💰 Waarde: €${points}\n${voucher.expiration_date ? `📅 Geldig tot: ${new Date(voucher.expiration_date).toLocaleDateString('nl-BE')}\n` : ''}\n\n🖨️ Wil je een label printen voor de ${printerName} printer?`
         );
         
         if (printLabel) {
@@ -59,7 +74,8 @@ export default function CadeaubonAanmakenPage() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
                 voucherCode: code,
-                voucherId: voucher.id 
+                voucherId: voucher.id,
+                printer,
               }),
             })
             .then(r => r.text())
@@ -118,12 +134,26 @@ export default function CadeaubonAanmakenPage() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="bg-white shadow-xl rounded-2xl p-6 mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              🎁 Cadeaubon Aanmaken
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Maak snel een nieuwe cadeaubon aan
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                  🎁 Cadeaubon Aanmaken
+                </h1>
+                <p className="text-gray-600 mt-2">
+                  Maak snel een nieuwe cadeaubon aan
+                </p>
+              </div>
+              <button
+                onClick={togglePrinter}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-all shrink-0 ${
+                  printer === 'zebra'
+                    ? 'border-black bg-gray-900 text-white hover:bg-gray-800'
+                    : 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (62×29mm)'}
+              </button>
+            </div>
           </div>
 
           {/* Voucher Form */}

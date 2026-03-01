@@ -1,5 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
+
+type PrinterType = 'zebra' | 'dymo';
 
 interface ScannedProduct {
   id: number;
@@ -24,7 +26,19 @@ export default function LabelsAfdrukkenPage() {
   const [scannedProducts, setScannedProducts] = useState<ScannedProduct[]>([]);
   const [adjustingStock, setAdjustingStock] = useState(false);
   const [printingLabels, setPrintingLabels] = useState(false);
+  const [printer, setPrinter] = useState<PrinterType>('zebra');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('labelPrinter') as PrinterType | null;
+    if (saved === 'dymo' || saved === 'zebra') setPrinter(saved);
+  }, []);
+
+  const togglePrinter = () => {
+    const next: PrinterType = printer === 'zebra' ? 'dymo' : 'zebra';
+    setPrinter(next);
+    localStorage.setItem('labelPrinter', next);
+  };
 
   const focusInput = useCallback(() => {
     setTimeout(() => inputRef.current?.focus(), 100);
@@ -224,7 +238,7 @@ export default function LabelsAfdrukkenPage() {
       const res = await fetch('/api/print-product-labels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds, overrides }),
+        body: JSON.stringify({ productIds, overrides, printer }),
       });
 
       if (!res.ok) {
@@ -274,12 +288,26 @@ export default function LabelsAfdrukkenPage() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="bg-white shadow-xl rounded-2xl p-6 mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              🏷️ Labels Afdrukken
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Scan producten, pas voorraad aan en druk prijslabels af (Dymo formaat)
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                  🏷️ Labels Afdrukken
+                </h1>
+                <p className="text-gray-600 mt-2">
+                  Scan producten, pas voorraad aan en druk prijslabels af
+                </p>
+              </div>
+              <button
+                onClick={togglePrinter}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-all shrink-0 ${
+                  printer === 'zebra'
+                    ? 'border-black bg-gray-900 text-white hover:bg-gray-800'
+                    : 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+              >
+                🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (62×29mm)'}
+              </button>
+            </div>
           </div>
 
           {/* Scanner */}
@@ -494,7 +522,7 @@ export default function LabelsAfdrukkenPage() {
                 </button>
               </div>
               <p className="text-sm text-gray-500 mt-3">
-                💡 Labels worden afgedrukt in Dymo formaat (62mm x 29mm). Selecteer je Dymo printer in het printvenster.
+                💡 Labels worden afgedrukt in {printer === 'zebra' ? 'Zebra formaat (51mm × 25mm)' : 'Dymo formaat (62mm × 29mm)'}. Selecteer je {printer === 'zebra' ? 'Zebra' : 'Dymo'} printer in het printvenster.
               </p>
             </div>
           )}

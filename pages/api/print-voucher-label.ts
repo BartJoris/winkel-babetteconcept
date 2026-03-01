@@ -68,8 +68,23 @@ async function generateBarcode(code: string): Promise<string> {
   }
 }
 
-// Generate HTML for Dymo-style label with barcode
-async function generateLabelHTML(code: string, amount: number, expiryDate?: string): Promise<string> {
+type PrinterType = 'zebra' | 'dymo';
+
+const PRINTER_STYLES: Record<PrinterType, { page: string; body: string; barcode: string }> = {
+  zebra: {
+    page: 'size: 51mm 25mm;',
+    body: 'width: 51mm; height: 25mm; padding: 1.5mm;',
+    barcode: 'max-width: 45mm;',
+  },
+  dymo: {
+    page: 'size: 62mm 29mm;',
+    body: 'width: 62mm; height: 29mm; padding: 2mm;',
+    barcode: 'max-width: 56mm;',
+  },
+};
+
+async function generateLabelHTML(code: string, amount: number, expiryDate?: string, printer: PrinterType = 'zebra'): Promise<string> {
+  const style = PRINTER_STYLES[printer];
   const barcodeDataUrl = await generateBarcode(code);
   
   // Format expiry date to DD/MM/YYYY if provided
@@ -90,7 +105,7 @@ async function generateLabelHTML(code: string, amount: number, expiryDate?: stri
   <meta charset="UTF-8">
   <style>
     @page {
-      size: 62mm 29mm;
+      ${style.page}
       margin: 0;
     }
     * {
@@ -99,10 +114,8 @@ async function generateLabelHTML(code: string, amount: number, expiryDate?: stri
       box-sizing: border-box;
     }
     body {
-      width: 62mm;
-      height: 29mm;
+      ${style.body}
       margin: 0;
-      padding: 2mm;
       font-family: Arial, sans-serif;
       display: flex;
       flex-direction: column;
@@ -114,13 +127,13 @@ async function generateLabelHTML(code: string, amount: number, expiryDate?: stri
       font-size: 11pt;
       font-weight: bold;
       color: #000;
-      margin-bottom: 1.5mm;
+      margin-bottom: 1mm;
       white-space: nowrap;
     }
     .barcode {
-      max-width: 56mm;
+      ${style.barcode}
       height: auto;
-      margin-bottom: 1mm;
+      margin-bottom: 0.5mm;
     }
     .code {
       font-size: 9pt;
@@ -155,7 +168,8 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { voucherCode, voucherId } = req.body;
+    const { voucherCode, voucherId, printer: printerParam } = req.body;
+    const printer: PrinterType = printerParam === 'dymo' ? 'dymo' : 'zebra';
 
     console.log('🖨️ Print Voucher Label - Code:', voucherCode, 'ID:', voucherId);
 
@@ -190,7 +204,7 @@ export default async function handler(
     }
 
     // Generate HTML label with barcode
-    const htmlContent = await generateLabelHTML(code, amount, expiryDate);
+    const htmlContent = await generateLabelHTML(code, amount, expiryDate, printer);
 
     // Return HTML that will be converted to PDF by the browser
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

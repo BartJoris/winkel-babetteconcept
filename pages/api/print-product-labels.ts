@@ -90,7 +90,23 @@ interface LabelProduct {
   sizeRange: string | null;
 }
 
-function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string, string>): string {
+type PrinterType = 'zebra' | 'dymo';
+
+const PRINTER_STYLES: Record<PrinterType, { page: string; label: string; barcode: string }> = {
+  zebra: {
+    page: 'size: 51mm 25mm landscape;',
+    label: 'width: 51mm; height: 25mm; padding: 1mm 1.5mm;',
+    barcode: 'max-width: 45mm; max-height: 6mm;',
+  },
+  dymo: {
+    page: 'size: 62mm 29mm landscape;',
+    label: 'width: 62mm; height: 29mm; padding: 1.5mm 2mm;',
+    barcode: 'max-width: 54mm; max-height: 8mm;',
+  },
+};
+
+function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string, string>, printer: PrinterType = 'zebra'): string {
+  const style = PRINTER_STYLES[printer];
   const labelBlocks = products.map((product) => {
     const barcodeDataUrl = product.barcode ? barcodeImages.get(product.barcode) || '' : '';
     const price = product.list_price.toLocaleString('nl-BE', {
@@ -117,7 +133,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
   <title>Product Labels</title>
   <style>
     @page {
-      size: 62mm 29mm landscape;
+      ${style.page}
       margin: 0;
     }
     * {
@@ -131,9 +147,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       font-family: Arial, sans-serif;
     }
     .label {
-      width: 62mm;
-      height: 29mm;
-      padding: 1.5mm 2mm;
+      ${style.label}
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -149,8 +163,8 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       font-size: 8pt;
       font-weight: bold;
       color: #000;
-      margin-bottom: 1mm;
-      max-height: 8mm;
+      margin-bottom: 0.5mm;
+      max-height: 7mm;
       overflow: hidden;
       text-overflow: ellipsis;
       display: -webkit-box;
@@ -169,12 +183,11 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       font-size: 11pt;
       font-weight: bold;
       color: #000;
-      margin-bottom: 1mm;
+      margin-bottom: 0.5mm;
     }
     .barcode {
-      max-width: 54mm;
+      ${style.barcode}
       height: auto;
-      max-height: 8mm;
       margin-bottom: 0.5mm;
     }
     .barcode-text {
@@ -212,10 +225,12 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { productIds, overrides } = req.body as {
+    const { productIds, overrides, printer: printerParam } = req.body as {
       productIds: number[];
       overrides?: Record<number, { name?: string; attributes?: string; sizeRange?: string }>;
+      printer?: string;
     };
+    const printer: PrinterType = printerParam === 'dymo' ? 'dymo' : 'zebra';
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs array is required' });
@@ -302,7 +317,7 @@ export default async function handler(
       })
     );
 
-    const html = generateLabelsHTML(orderedProducts, barcodeImages);
+    const html = generateLabelsHTML(orderedProducts, barcodeImages, printer);
 
     console.log('✅ Generated', orderedProducts.length, 'labels');
 

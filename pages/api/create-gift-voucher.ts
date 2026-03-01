@@ -158,15 +158,15 @@ export default async function handler(
       console.log('ℹ️ No customer specified - creating anonymous voucher');
     }
 
-    // Korte code zonder streepjes: Odoo-compatibel én korte barcode die goed scant (zoals de oude 12-tekens codes)
-    // Hoofdletters zodat scanners (vaak uppercase output) de code in Odoo terugvinden
-    const codeWithoutHyphens = randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase();
+    // Exact hetzelfde formaat als Odoo zelf (loyalty/models/loyalty_card.py: _generate_code)
+    // '044' + uuid[7:18] → barcode herkenbaar in POS en handmatig opzoeken werkt
+    const uuid = randomUUID();
+    const odooStyleCode = '044' + uuid.slice(7, 18);
 
-    // Create the loyalty card with our code (no hyphens)
     const cardData: any = {
       program_id: programId,
       points: amount,
-      code: codeWithoutHyphens,
+      code: odooStyleCode,
     };
 
     // Only add partner_id if customer was specified

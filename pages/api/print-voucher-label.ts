@@ -49,15 +49,14 @@ async function odooCall<T>(params: {
   return json.result as T;
 }
 
-// Generate barcode image as base64
+// Generate barcode image as base64 (grotere scale/height = beter scanbaar, zie Odoo forum)
 async function generateBarcode(code: string): Promise<string> {
   try {
-    // Generate Code 128 barcode
     const png = await bwipjs.toBuffer({
       bcid: 'code128',
       text: code,
-      scale: 3,
-      height: 10,
+      scale: 4,
+      height: 12,
       includetext: false,
     });
     

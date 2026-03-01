@@ -91,6 +91,7 @@ interface LabelProduct {
 }
 
 type PrinterType = 'zebra' | 'dymo';
+type LabelFormat = 'normal' | 'small';
 
 const PRINTER_STYLES: Record<PrinterType, { page: string; label: string; barcode: string }> = {
   zebra: {
@@ -105,16 +106,40 @@ const PRINTER_STYLES: Record<PrinterType, { page: string; label: string; barcode
   },
 };
 
-function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string, string>, printer: PrinterType = 'zebra'): string {
-  const style = PRINTER_STYLES[printer];
+const SMALL_FORMAT_STYLE = {
+  page: 'size: 25mm 25mm;',
+  label: 'width: 25mm; height: 25mm; padding: 1mm;',
+};
+
+function generateLabelsHTML(
+  products: LabelProduct[],
+  barcodeImages: Map<string, string>,
+  printer: PrinterType = 'zebra',
+  format: LabelFormat = 'normal'
+): string {
+  const isSmall = format === 'small';
+  const pageStyle = isSmall ? SMALL_FORMAT_STYLE.page : PRINTER_STYLES[printer].page;
+  const labelStyle = isSmall ? SMALL_FORMAT_STYLE.label : PRINTER_STYLES[printer].label;
+
   const labelBlocks = products.map((product) => {
-    const barcodeDataUrl = product.barcode ? barcodeImages.get(product.barcode) || '' : '';
     const price = product.list_price.toLocaleString('nl-BE', {
       style: 'currency',
       currency: 'EUR',
       minimumFractionDigits: 2,
     });
+    const variantLine = [product.attributes, product.sizeRange ? abbreviateRange(product.sizeRange) : '']
+      .filter(Boolean)
+      .join(' – ');
 
+    if (isSmall) {
+      return `
+      <div class="label label-small">
+        <div class="price">${price}</div>
+        ${variantLine ? `<div class="variant">${escapeHtml(variantLine)}</div>` : ''}
+      </div>`;
+    }
+
+    const barcodeDataUrl = product.barcode ? barcodeImages.get(product.barcode) || '' : '';
     return `
       <div class="label">
         <div class="product-name">${escapeHtml(product.name)}</div>
@@ -125,6 +150,8 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       </div>`;
   });
 
+  const barcodeStyle = isSmall ? '' : PRINTER_STYLES[printer].barcode;
+
   return `
 <!DOCTYPE html>
 <html>
@@ -133,7 +160,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
   <title>Product Labels</title>
   <style>
     @page {
-      ${style.page}
+      ${pageStyle}
       margin: 0;
     }
     * {
@@ -147,7 +174,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       font-family: Arial, sans-serif;
     }
     .label {
-      ${style.label}
+      ${labelStyle}
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -158,6 +185,24 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
     }
     .label:last-child {
       page-break-after: auto;
+    }
+    .label-small .price {
+      font-size: 10pt;
+      font-weight: bold;
+      color: #000;
+      margin-bottom: 1mm;
+    }
+    .label-small .variant {
+      font-size: 7pt;
+      font-weight: bold;
+      color: #333;
+      max-height: 8mm;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.2;
     }
     .product-name {
       font-size: 8pt;
@@ -186,7 +231,7 @@ function generateLabelsHTML(products: LabelProduct[], barcodeImages: Map<string,
       margin-bottom: 0.5mm;
     }
     .barcode {
-      ${style.barcode}
+      ${barcodeStyle}
       height: auto;
       margin-bottom: 0.5mm;
     }
@@ -225,12 +270,14 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { productIds, overrides, printer: printerParam } = req.body as {
+    const { productIds, overrides, printer: printerParam, format: formatParam } = req.body as {
       productIds: number[];
       overrides?: Record<number, { name?: string; attributes?: string; sizeRange?: string }>;
       printer?: string;
+      format?: string;
     };
     const printer: PrinterType = printerParam === 'dymo' ? 'dymo' : 'zebra';
+    const format: LabelFormat = formatParam === 'small' ? 'small' : 'normal';
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs array is required' });
@@ -317,7 +364,7 @@ export default async function handler(
       })
     );
 
-    const html = generateLabelsHTML(orderedProducts, barcodeImages, printer);
+    const html = generateLabelsHTML(orderedProducts, barcodeImages, printer, format);
 
     console.log('✅ Generated', orderedProducts.length, 'labels');
 

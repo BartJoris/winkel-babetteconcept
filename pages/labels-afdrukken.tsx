@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 type PrinterType = 'zebra' | 'dymo';
+type LabelFormat = 'normal' | 'small'; // small = 25×25mm, alleen prijs + variant
 
 interface ScannedProduct {
   id: number;
@@ -27,6 +28,7 @@ export default function LabelsAfdrukkenPage() {
   const [adjustingStock, setAdjustingStock] = useState(false);
   const [printingLabels, setPrintingLabels] = useState(false);
   const [printer, setPrinter] = useState<PrinterType>('zebra');
+  const [labelFormat, setLabelFormat] = useState<LabelFormat>('normal');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,10 +36,21 @@ export default function LabelsAfdrukkenPage() {
     if (saved === 'dymo' || saved === 'zebra') setPrinter(saved);
   }, []);
 
+  useEffect(() => {
+    const saved = localStorage.getItem('labelFormat') as LabelFormat | null;
+    if (saved === 'small' || saved === 'normal') setLabelFormat(saved);
+  }, []);
+
   const togglePrinter = () => {
     const next: PrinterType = printer === 'zebra' ? 'dymo' : 'zebra';
     setPrinter(next);
     localStorage.setItem('labelPrinter', next);
+  };
+
+  const toggleLabelFormat = () => {
+    const next: LabelFormat = labelFormat === 'normal' ? 'small' : 'normal';
+    setLabelFormat(next);
+    localStorage.setItem('labelFormat', next);
   };
 
   const focusInput = useCallback(() => {
@@ -242,7 +255,7 @@ export default function LabelsAfdrukkenPage() {
       const res = await fetch('/api/print-product-labels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds, overrides, printer }),
+        body: JSON.stringify({ productIds, overrides, printer, format: labelFormat }),
       });
 
       if (!res.ok) {
@@ -301,16 +314,29 @@ export default function LabelsAfdrukkenPage() {
                   Scan producten, pas voorraad aan en druk prijslabels af
                 </p>
               </div>
-              <button
-                onClick={togglePrinter}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-all shrink-0 ${
-                  printer === 'zebra'
-                    ? 'border-black bg-gray-900 text-white hover:bg-gray-800'
-                    : 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                }`}
-              >
-                🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (62×29mm)'}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={toggleLabelFormat}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-all shrink-0 ${
+                    labelFormat === 'normal'
+                      ? 'border-gray-400 bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'border-amber-500 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  }`}
+                  title={labelFormat === 'normal' ? 'Klik voor klein formaat (25×25mm)' : 'Klik voor normaal formaat'}
+                >
+                  📐 {labelFormat === 'normal' ? 'Normaal formaat' : 'Klein (25×25mm)'}
+                </button>
+                <button
+                  onClick={togglePrinter}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-all shrink-0 ${
+                    printer === 'zebra'
+                      ? 'border-black bg-gray-900 text-white hover:bg-gray-800'
+                      : 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (62×29mm)'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -526,7 +552,11 @@ export default function LabelsAfdrukkenPage() {
                 </button>
               </div>
               <p className="text-sm text-gray-500 mt-3">
-                💡 Labels worden afgedrukt in {printer === 'zebra' ? 'Zebra formaat (51mm × 25mm)' : 'Dymo formaat (62mm × 29mm)'}. Selecteer je {printer === 'zebra' ? 'Zebra' : 'Dymo'} printer in het printvenster.
+                💡 {labelFormat === 'small'
+                  ? 'Klein formaat (25×25mm): alleen prijs en variant/maatreeks. '
+                  : ''}
+                Labels: {printer === 'zebra' ? 'Zebra (51×25mm)' : 'Dymo (62×29mm)'}.
+                Selecteer je {printer === 'zebra' ? 'Zebra' : 'Dymo'} printer in het printvenster.
               </p>
             </div>
           )}

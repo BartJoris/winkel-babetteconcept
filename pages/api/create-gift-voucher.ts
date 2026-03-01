@@ -158,8 +158,8 @@ export default async function handler(
       console.log('ℹ️ No customer specified - creating anonymous voucher');
     }
 
-    // Generate a code without hyphens so Odoo (scan, invoer) er goed mee overweg kan
-    const codeWithoutHyphens = randomUUID().replace(/-/g, '');
+    // Korte code zonder streepjes: Odoo-compatibel én korte barcode die goed scant (zoals de oude 12-tekens codes)
+    const codeWithoutHyphens = randomUUID().replace(/-/g, '').slice(0, 12);
 
     // Create the loyalty card with our code (no hyphens)
     const cardData: any = {

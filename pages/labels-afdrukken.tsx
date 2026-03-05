@@ -246,6 +246,54 @@ export default function LabelsAfdrukkenPage() {
         }
       }
 
+      const payload = { productIds, overrides, printer, format: labelFormat };
+      const useZpl = printer === 'zebra' && labelFormat === 'normal';
+
+      if (useZpl) {
+        let zpl: string | null = null;
+        const zplRes = await fetch('/api/print-product-labels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, output: 'zpl' }),
+        });
+        if (zplRes.ok) {
+          zpl = await zplRes.text();
+        }
+
+        if (zpl) {
+          const bridgeRes = await fetch('http://127.0.0.1:9333/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            body: zpl,
+          }).catch(() => null);
+          if (bridgeRes?.ok) {
+            const data = await bridgeRes.json().catch(() => ({}));
+            alert(`Labels direct naar Zebra gestuurd (${data.labels ?? productIds.length} label(s)).`);
+            if (confirm('Wil je de lijst leegmaken?')) {
+              setScannedProducts([]);
+              focusInput();
+            }
+            setPrintingLabels(false);
+            return;
+          }
+          const useFallback = confirm(
+            'ZPL-bridge niet bereikbaar. Start in een terminal: npm run print-zebra\n\nNu afdrukken via het browser-printvenster?'
+          );
+          if (!useFallback) {
+            setPrintingLabels(false);
+            return;
+          }
+        } else {
+          const useFallback = confirm(
+            'Kon geen ZPL ophalen voor directe print (controleer of je bent ingelogd).\n\nAfdrukken via het browser-printvenster?'
+          );
+          if (!useFallback) {
+            setPrintingLabels(false);
+            return;
+          }
+        }
+      }
+
       const labelWindow = window.open('', '_blank', 'width=400,height=600');
       if (!labelWindow) {
         alert('Popup geblokkeerd. Sta popups toe voor deze site.');
@@ -255,7 +303,7 @@ export default function LabelsAfdrukkenPage() {
       const res = await fetch('/api/print-product-labels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds, overrides, printer, format: labelFormat }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -269,7 +317,6 @@ export default function LabelsAfdrukkenPage() {
       labelWindow.document.write(html);
       labelWindow.document.close();
 
-      // After print dialog closes, ask to clear the list
       const checkClosed = setInterval(() => {
         if (labelWindow.closed) {
           clearInterval(checkClosed);
@@ -315,6 +362,15 @@ export default function LabelsAfdrukkenPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href={`/api/test-label?printer=${printer}&format=${labelFormat}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all shrink-0"
+                  title="Print één testlabel met het gekozen formaat"
+                >
+                  🧪 Testlabel
+                </a>
                 <button
                   onClick={toggleLabelFormat}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-all shrink-0 ${
@@ -556,7 +612,9 @@ export default function LabelsAfdrukkenPage() {
                   ? 'Klein formaat (25×25mm): alleen prijs en variant/maatreeks. '
                   : ''}
                 Labels: {printer === 'zebra' ? 'Zebra (51×25mm)' : 'Dymo (62×29mm)'}.
-                Selecteer je {printer === 'zebra' ? 'Zebra' : 'Dymo'} printer in het printvenster.
+                {printer === 'zebra' && labelFormat === 'normal'
+                  ? ' Zebra 51×25 mm. Direct naar printer: start in een terminal "npm run print-zebra", daarna gaat "Labels afdrukken" direct naar de Zebra (zoals echo | lpr -o raw). Zonder bridge opent het browser-printvenster.'
+                  : ` Selecteer je ${printer === 'zebra' ? 'Zebra' : 'Dymo'} printer in het printvenster.`}
               </p>
             </div>
           )}

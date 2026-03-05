@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
+import { generateZPL as generateZPLFromLib, abbreviateRange } from '@/lib/zpl-labels';
 const bwipjs = require('bwip-js');
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
@@ -66,13 +67,6 @@ async function generateBarcode(text: string): Promise<string> {
   }
 }
 
-function abbreviateRange(range: string): string {
-  return range
-    .replace(/\s*-\s*/g, '/')
-    .replace(/\s*maand/gi, 'm')
-    .replace(/\s*jaar/gi, 'j');
-}
-
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -93,16 +87,20 @@ interface LabelProduct {
 type PrinterType = 'zebra' | 'dymo';
 type LabelFormat = 'normal' | 'small';
 
+// Formaten in mm (fysiek label). Het printvenster toont vaak inches: Zebra 51×25 mm = 2×1 in, Dymo 62×29 mm ≈ 2.44×1.14 in.
+const ZEBRA_LABEL_MM = { width: 51, height: 25 };
+const DYMO_LABEL_MM = { width: 62, height: 29 };
+
 const PRINTER_STYLES: Record<PrinterType, { page: string; label: string; barcode: string }> = {
   zebra: {
-    page: 'size: 51mm 25mm landscape;',
-    label: 'width: 51mm; height: 25mm; padding: 1mm 1.5mm;',
-    barcode: 'max-width: 45mm; max-height: 6mm;',
+    page: `size: ${ZEBRA_LABEL_MM.width}mm ${ZEBRA_LABEL_MM.height}mm landscape;`,
+    label: `width: ${ZEBRA_LABEL_MM.width}mm; height: ${ZEBRA_LABEL_MM.height}mm; padding: 0.8mm 1.5mm;`,
+    barcode: `max-width: ${ZEBRA_LABEL_MM.width - 6}mm; max-height: 8mm;`,
   },
   dymo: {
-    page: 'size: 62mm 29mm landscape;',
-    label: 'width: 62mm; height: 29mm; padding: 1.5mm 2mm;',
-    barcode: 'max-width: 54mm; max-height: 8mm;',
+    page: `size: ${DYMO_LABEL_MM.width}mm ${DYMO_LABEL_MM.height}mm landscape;`,
+    label: `width: ${DYMO_LABEL_MM.width}mm; height: ${DYMO_LABEL_MM.height}mm; padding: 1.5mm 2mm;`,
+    barcode: `max-width: ${DYMO_LABEL_MM.width - 8}mm; max-height: 8mm;`,
   },
 };
 
@@ -140,24 +138,31 @@ function generateLabelsHTML(
     }
 
     const barcodeDataUrl = product.barcode ? barcodeImages.get(product.barcode) || '' : '';
-    return `
-      <div class="label">
+    const isZebraLabel = !isSmall && printer === 'zebra';
+    const labelContent = `
+      <div class="label${isZebraLabel ? ' label-zebra' : ''}">
         <div class="product-name">${escapeHtml(product.name)}</div>
         ${product.attributes ? `<div class="attributes">${escapeHtml(product.attributes)}${product.sizeRange ? ` (${escapeHtml(abbreviateRange(product.sizeRange))})` : ''}</div>` : product.sizeRange ? `<div class="attributes">(${escapeHtml(abbreviateRange(product.sizeRange))})</div>` : ''}
         <div class="price">${price}</div>
         ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" class="barcode" alt="Barcode" />` : ''}
         ${product.barcode ? `<div class="barcode-text">${escapeHtml(product.barcode)}</div>` : ''}
       </div>`;
+    return isZebraLabel ? `<div class="label-zebra-flip">${labelContent}</div>` : labelContent;
   });
 
   const barcodeStyle = isSmall ? '' : PRINTER_STYLES[printer].barcode;
+  const isZebra = !isSmall && printer === 'zebra';
+  const printHint = isZebra
+    ? '<p class="print-hint">Zebra <strong>51×25 mm</strong>: in het printvenster kies je hetzelfde formaat (vaak in inches: <strong>2×1 in</strong>), <strong>Landscape</strong>, <strong>Aantal: 1</strong>. Preview toont tekst ondersteboven; op het label staat hij recht.</p>'
+    : '';
 
   return `
 <!DOCTYPE html>
-<html>
+<html lang="nl"${isZebra ? ' data-printer="zebra"' : ''}>
 <head>
   <meta charset="UTF-8">
   <title>Product Labels</title>
+  <meta name="description" content="${isZebra ? 'Zebra 51x25mm labels' : 'Product labels'}">
   <style>
     @page {
       ${pageStyle}
@@ -173,6 +178,22 @@ function generateLabelsHTML(
       padding: 0;
       font-family: Arial, sans-serif;
     }
+    .print-hint {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 12px;
+      background: #e8f4ea;
+      border-bottom: 1px solid #2e7d32;
+      font-size: 13px;
+      color: #1b5e20;
+      z-index: 9999;
+    }
+    @media print {
+      .print-hint { display: none !important; }
+      html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
     .label {
       ${labelStyle}
       display: flex;
@@ -186,6 +207,16 @@ function generateLabelsHTML(
     .label:last-child {
       page-break-after: auto;
     }
+    .label-zebra-flip {
+      width: ${ZEBRA_LABEL_MM.width}mm; height: ${ZEBRA_LABEL_MM.height}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; page-break-after: always;
+      transform: rotate(180deg); transform-origin: center center;
+    }
+    .label-zebra-flip:last-of-type { page-break-after: auto; }
+    .label-zebra .product-name { font-size: 10pt !important; font-weight: bold; margin-bottom: 0.5mm; line-height: 1.2; max-height: 8mm; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .label-zebra .attributes { font-size: 9pt !important; font-weight: bold; margin-bottom: 0.5mm; line-height: 1.2; }
+    .label-zebra .price { font-size: 12pt !important; font-weight: bold; margin-bottom: 0.5mm; line-height: 1.2; }
+    .label-zebra .barcode { max-height: 8mm !important; margin-bottom: 0.4mm; }
+    .label-zebra .barcode-text { font-size: 6pt !important; }
     .label-small .price {
       font-size: 10pt;
       font-weight: bold;
@@ -244,6 +275,7 @@ function generateLabelsHTML(
   </style>
 </head>
 <body>
+  ${printHint}
   ${labelBlocks.join('\n')}
   <script>
     window.onload = function() {
@@ -270,14 +302,16 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { productIds, overrides, printer: printerParam, format: formatParam } = req.body as {
+    const { productIds, overrides, printer: printerParam, format: formatParam, output: outputParam } = req.body as {
       productIds: number[];
       overrides?: Record<number, { name?: string; attributes?: string; sizeRange?: string }>;
       printer?: string;
       format?: string;
+      output?: string;
     };
     const printer: PrinterType = printerParam === 'dymo' ? 'dymo' : 'zebra';
     const format: LabelFormat = formatParam === 'small' ? 'small' : 'normal';
+    const outputZpl = outputParam === 'zpl';
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs array is required' });
@@ -354,7 +388,14 @@ export default async function handler(
       }
     }
 
-    // Generate all barcodes
+    if (outputZpl && printer === 'zebra' && format === 'normal') {
+      const zpl = generateZPLFromLib(orderedProducts);
+      console.log('✅ Generated ZPL for', orderedProducts.length, 'labels');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(200).send(zpl);
+    }
+
+    // Generate all barcodes (for HTML output)
     const barcodeImages = new Map<string, string>();
     const uniqueBarcodes = [...new Set(orderedProducts.map(p => p.barcode).filter(Boolean))] as string[];
     await Promise.all(

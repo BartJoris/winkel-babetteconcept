@@ -100,6 +100,28 @@ Label includes:
 - Scannable barcode (Code 128)
 - Voucher code
 
+### Zebra ZD421 printer instellen (Mac)
+
+Zie **[scripts/README-Zebra-printer.md](scripts/README-Zebra-printer.md)** voor het aanmaken van de printer met de juiste naam (`Zebra_Technologies_ZTC_ZD421_203dpi_ZPL`) en instellingen (50,8×25,4 mm, 203 dpi, Mark sensing, Direct Thermal).
+
+### Zebra print-bridge altijd draaien (Mac in de winkel)
+
+Voor direct printen naar de Zebra ZD421 (prijslabels) moet de ZPL-bridge op poort 9333 draaien. Om die **automatisch bij inloggen te starten** en bij crash te herstarten:
+
+1. **Eenmalig installeren** (uitvoeren in de projectmap):
+   ```bash
+   ./scripts/install-print-zebra-bridge-service.sh
+   ```
+   Dit zet een launchd-service in `~/Library/LaunchAgents/` en start de bridge.
+
+2. **Handige commando's**
+   - Status: `launchctl list | grep com.winkel.print-zebra`
+   - Log bekijken: `tail -f logs/print-zebra-bridge.log`
+   - Stoppen: `launchctl unload ~/Library/LaunchAgents/com.winkel.print-zebra-bridge.plist`
+   - Opnieuw starten: `launchctl load ~/Library/LaunchAgents/com.winkel.print-zebra-bridge.plist`
+
+Na een herstart of nieuwe login draait de bridge weer vanzelf.
+
 ## 📦 Project Structure
 
 ```

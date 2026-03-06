@@ -55,6 +55,8 @@ Next.js-app voor winkeloperaties bij Babette: voorraad, prijslabels, cadeaubonne
 
 ## Zebra ZD421 (prijslabels)
 
+**Nieuwe winkelcomputer klaarzetten?** Volledige stappen en alle commando’s: [scripts/README-Setup-Winkel-Mac.md](scripts/README-Setup-Winkel-Mac.md).
+
 Labels zijn 51×25 mm (2×1 inch, 203 dpi). ZPL wordt gegenereerd in `lib/zpl-labels.ts`; typografie (marges, lettergroottes, regelafstand) is instelbaar via **Label test** en standaard in `DEFAULT_LABEL_OPTIONS`.
 
 ### Printer instellen (Mac)

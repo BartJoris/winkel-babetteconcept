@@ -262,6 +262,7 @@ export default async function handler(
       return res.status(200).json({
         success: true,
         productName: p.name,
+        productTmplId: templateId ?? undefined,
         scannedVariantId: p.id,
         sizeRange,
         variants: [{
@@ -542,6 +543,7 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
   return {
     success: true,
     productName: productName,
+    productTmplId: templateId,
     scannedVariantId: scannedProduct.id,
     variants: variants,
     totalVariants: variants.length,

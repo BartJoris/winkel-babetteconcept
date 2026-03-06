@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, Fragment } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 type PrinterType = 'zebra' | 'dymo';
@@ -13,6 +13,8 @@ interface ScannedProduct {
   attributes: string | null;
   sizeRange: string | null;
   count: number;
+  /** Odoo product.template id: zelfde product, andere maten/varianten */
+  productTmplId?: number | null;
   stockStatus?: 'success' | 'error' | 'pending';
   stockError?: string;
 }
@@ -101,6 +103,7 @@ export default function LabelsAfdrukkenPage() {
               qty_available: scannedVariant.qty_available,
               attributes: scannedVariant.attributes,
               sizeRange: json.sizeRange,
+              productTmplId: json.productTmplId ?? null,
             });
           }
         }
@@ -138,6 +141,7 @@ export default function LabelsAfdrukkenPage() {
           attributes: product.attributes || null,
           sizeRange: product.sizeRange || null,
           count: 1,
+          productTmplId: product.productTmplId ?? null,
         },
       ];
     });
@@ -151,9 +155,19 @@ export default function LabelsAfdrukkenPage() {
   };
 
   const updateField = (id: number, field: 'name' | 'attributes', value: string) => {
-    setScannedProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, [field]: value || null } : p))
-    );
+    setScannedProducts((prev) => {
+      const product = prev.find((p) => p.id === id);
+      const productTmplId = product?.productTmplId;
+      // Bij naam: ook alle andere varianten van hetzelfde product (zelfde template) bijwerken
+      const sameProductIds =
+        field === 'name' && productTmplId != null
+          ? prev.filter((p) => p.productTmplId === productTmplId).map((p) => p.id)
+          : [id];
+      const idSet = new Set(sameProductIds);
+      return prev.map((p) =>
+        idSet.has(p.id) ? { ...p, [field]: value || null } : p
+      );
+    });
   };
 
   const removeProduct = (id: number) => {
@@ -346,6 +360,17 @@ export default function LabelsAfdrukkenPage() {
 
   const totalLabels = scannedProducts.reduce((sum, p) => sum + p.count, 0);
 
+  // Groepeer op productTmplId zodat we varianten visueel kunnen groeperen
+  const productGroups = (() => {
+    const byTmpl = new Map<number | string, ScannedProduct[]>();
+    for (const p of scannedProducts) {
+      const key = p.productTmplId != null ? p.productTmplId : `single-${p.id}`;
+      if (!byTmpl.has(key)) byTmpl.set(key, []);
+      byTmpl.get(key)!.push(p);
+    }
+    return Array.from(byTmpl.entries()).map(([key, products]) => ({ key, products }));
+  })();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 font-sans">
       <div className="p-4 sm:p-8">
@@ -472,28 +497,49 @@ export default function LabelsAfdrukkenPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {scannedProducts.map((product) => (
-                      <tr
-                        key={product.id}
-                        className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                          product.stockStatus === 'success'
-                            ? 'bg-green-50'
-                            : product.stockStatus === 'error'
-                            ? 'bg-red-50'
-                            : product.stockStatus === 'pending'
-                            ? 'bg-yellow-50'
-                            : ''
-                        }`}
-                      >
-                        <td className="py-3 px-2">
-                          <input
-                            type="text"
-                            value={product.name}
-                            onChange={(e) => updateField(product.id, 'name', e.target.value)}
-                            className="w-full font-medium text-gray-900 text-sm break-words bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none py-0.5 transition-colors"
-                            title="Klik om naam te bewerken (alleen voor afdruk)"
-                          />
-                          <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                    {productGroups.map(({ key, products }) => {
+                      const isLinkedGroup = products.length > 1 && typeof key === 'number';
+                      return (
+                        <Fragment key={String(key)}>
+                          {isLinkedGroup && (
+                            <tr className="bg-sky-50 border-y-2 border-sky-200">
+                              <td colSpan={5} className="py-2 px-3 text-sm text-sky-800 font-medium">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span aria-hidden>🔗</span>
+                                  Productgroep ({products.length} varianten) — naam wijzigen geldt voor alle varianten hieronder
+                                </span>
+                              </td>
+                            </tr>
+                          )}
+                          {products.map((product) => (
+                            <tr
+                              key={product.id}
+                              className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+                                isLinkedGroup ? 'bg-sky-50/50' : ''
+                              } ${
+                                product.stockStatus === 'success'
+                                  ? 'bg-green-50'
+                                  : product.stockStatus === 'error'
+                                  ? 'bg-red-50'
+                                  : product.stockStatus === 'pending'
+                                  ? 'bg-yellow-50'
+                                  : ''
+                              }`}
+                            >
+                              <td className="py-3 px-2">
+                                <input
+                                  type="text"
+                                  value={product.name}
+                                  onChange={(e) => updateField(product.id, 'name', e.target.value)}
+                                  className="w-full font-medium text-gray-900 text-sm break-words bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none py-0.5 transition-colors"
+                                  title={isLinkedGroup ? 'Naam geldt voor alle varianten in deze groep' : 'Klik om naam te bewerken (alleen voor afdruk)'}
+                                />
+                                {isLinkedGroup && (
+                                  <p className="text-xs text-sky-600 mt-0.5 font-medium">
+                                    Naam geldt voor alle {products.length} varianten
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap items-center gap-1 mt-0.5">
                             <input
                               type="text"
                               value={product.attributes || ''}
@@ -572,7 +618,10 @@ export default function LabelsAfdrukkenPage() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                          ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

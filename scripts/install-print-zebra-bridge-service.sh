@@ -10,10 +10,14 @@ NODE_PATH="$(command -v node || true)"
 
 mkdir -p "$PROJECT_PATH/logs"
 PLIST_DEST="$HOME/Library/LaunchAgents/com.winkel.print-zebra-bridge.plist"
+# ZPL_BRIDGE_SECRET optioneel: gebruik bij tunnel (zelfde waarde als op Vercel)
+SECRET_VAL="${ZPL_BRIDGE_SECRET:-}"
 sed -e "s|PROJECT_PATH|$PROJECT_PATH|g" \
     -e "s|/opt/homebrew/bin/node|$NODE_PATH|g" \
+    -e "s|ZPL_BRIDGE_SECRET_VALUE|$SECRET_VAL|g" \
     scripts/com.winkel.print-zebra-bridge.plist > "$PLIST_DEST"
 echo "Plist geïnstalleerd: $PLIST_DEST"
+[ -n "$SECRET_VAL" ] && echo "ZPL_BRIDGE_SECRET is gezet (voor tunnel/Vercel)."
 
 # Stop oude versie als die draait
 launchctl unload "$PLIST_DEST" 2>/dev/null || true

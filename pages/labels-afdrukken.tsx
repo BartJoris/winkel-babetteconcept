@@ -261,10 +261,10 @@ export default function LabelsAfdrukkenPage() {
         }
 
         if (zpl) {
-          const bridgeRes = await fetch('http://127.0.0.1:9333/print', {
+          const bridgeRes = await fetch('/api/print-zpl', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-            body: zpl,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ zpl }),
           }).catch(() => null);
           if (bridgeRes?.ok) {
             const data = await bridgeRes.json().catch(() => ({}));
@@ -277,7 +277,7 @@ export default function LabelsAfdrukkenPage() {
             return;
           }
           const useFallback = confirm(
-            'ZPL-bridge niet bereikbaar. Start in een terminal: npm run print-zebra\n\nNu afdrukken via het browser-printvenster?'
+            'Zebra-bridge niet bereikbaar of fout. Controleer de bridge (lokaal of via tunnel).\n\nNu afdrukken via het browser-printvenster?'
           );
           if (!useFallback) {
             setPrintingLabels(false);

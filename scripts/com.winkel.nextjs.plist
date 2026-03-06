@@ -3,26 +3,29 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.winkel.print-zebra-bridge</string>
+  <string>com.winkel.nextjs</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/node</string>
-    <string>scripts/print-zebra-bridge.js</string>
+    <string>NODE_PATH</string>
+    <string>PROJECT_PATH/node_modules/next/dist/bin/next</string>
+    <string>start</string>
+    <string>-p</string>
+    <string>3001</string>
   </array>
   <key>WorkingDirectory</key>
   <string>PROJECT_PATH</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>ZPL_BRIDGE_SECRET</key>
-    <string>ZPL_BRIDGE_SECRET_VALUE</string>
-  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
   <key>StandardOutPath</key>
-  <string>PROJECT_PATH/logs/print-zebra-bridge.log</string>
+  <string>PROJECT_PATH/logs/nextjs.log</string>
   <key>StandardErrorPath</key>
-  <string>PROJECT_PATH/logs/print-zebra-bridge.log</string>
+  <string>PROJECT_PATH/logs/nextjs.log</string>
 </dict>
 </plist>

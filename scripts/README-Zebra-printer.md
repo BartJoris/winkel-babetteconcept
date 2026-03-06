@@ -28,6 +28,15 @@ ZEBRA_PRINTER="JouwPrinterNaam" node scripts/print-zebra-bridge.js
 
 Bij de launchd-service: in de plist in `~/Library/LaunchAgents/` kun je een `<key>EnvironmentVariables</key>` toevoegen met `ZEBRA_PRINTER`.
 
+### Optioneel: ZPL_BRIDGE_SECRET (bij tunnel of extern bereik)
+
+Als je de bridge bereikbaar maakt via een tunnel (bijv. Cloudflare → zebra.babetteconcept.be), stel dan een gedeeld geheim in zodat niet iedereen kan printen:
+
+- **Op de Mac (bridge):** start de bridge met `ZPL_BRIDGE_SECRET=jouw_geheime_string` of zet die in de launchd-plist onder EnvironmentVariables.
+- **In de app (Vercel of .env):** zet dezelfde waarde in `ZPL_BRIDGE_SECRET`. De API stuurt die mee als header `X-ZPL-Secret`; de bridge accepteert alleen verzoeken met de juiste waarde.
+
+Zonder `ZPL_BRIDGE_SECRET` accepteert de bridge alle POST-verzoeken (geschikt voor alleen lokaal gebruik).
+
 ## 3. Standaardopties instellen
 
 Ga naar **Systeeminstellingen** → **Printers en scanners** → selecteer de Zebra → **Opties en ondersteuning** → **Standaardopties** (of “Open printerwachtrij” en daar **Printer → Stel standaardopties in**).

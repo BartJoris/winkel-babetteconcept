@@ -1,11 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 const ZPL_BRIDGE_URL = process.env.ZPL_BRIDGE_URL || 'http://127.0.0.1:9333/print';
+const ZPL_BRIDGE_SECRET = process.env.ZPL_BRIDGE_SECRET || '';
 
 /**
  * POST: ontvangt ZPL (body: { zpl: string }) en stuurt door naar de ZPL-bridge (lpr naar Zebra).
- * Zo kun je vanaf labels-debug (of elk apparaat) direct printen; de server stuurt
- * de ZPL naar de bridge op dezelfde machine.
+ * Als ZPL_BRIDGE_SECRET gezet is (lokaal of op Vercel), stuurt de API die mee als X-ZPL-Secret.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -19,16 +19,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Geen ZPL. Stuur JSON: { "zpl": "^XA..." }' });
   }
 
+  const headers: Record<string, string> = { 'Content-Type': 'text/plain; charset=utf-8' };
+  if (ZPL_BRIDGE_SECRET) {
+    headers['X-ZPL-Secret'] = ZPL_BRIDGE_SECRET;
+  }
+
   try {
     const bridgeRes = await fetch(ZPL_BRIDGE_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      headers,
       body: zplBody,
     });
 
     const data = await bridgeRes.json().catch(() => ({}));
     if (!bridgeRes.ok) {
-      return res.status(502).json({
+      const status = bridgeRes.status === 401 ? 502 : bridgeRes.status;
+      return res.status(status).json({
         error: 'ZPL-bridge fout',
         details: data.error || bridgeRes.statusText,
       });

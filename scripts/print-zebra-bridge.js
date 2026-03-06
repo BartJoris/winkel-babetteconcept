@@ -9,13 +9,14 @@ const { spawn } = require('child_process');
 
 const PORT = parseInt(process.env.PORT || '9333', 10);
 const PRINTER = process.env.ZEBRA_PRINTER || 'Zebra_Technologies_ZTC_ZD421_203dpi_ZPL';
+const BRIDGE_SECRET = process.env.ZPL_BRIDGE_SECRET || '';
 
 const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, X-ZPL-Secret',
     });
     res.end();
     return;
@@ -25,6 +26,15 @@ const server = http.createServer((req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found. POST /print with ZPL body.');
     return;
+  }
+
+  if (BRIDGE_SECRET) {
+    const given = req.headers['x-zpl-secret'];
+    if (given !== BRIDGE_SECRET) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized. Set X-ZPL-Secret.' }));
+      return;
+    }
   }
 
   const chunks = [];
@@ -59,5 +69,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Zebra ZPL bridge: http://127.0.0.1:${PORT}/print (printer: ${PRINTER})`);
+  console.log(`Zebra ZPL bridge: http://127.0.0.1:${PORT}/print (printer: ${PRINTER})${BRIDGE_SECRET ? ', secret required' : ''}`);
 });

@@ -58,11 +58,9 @@ export default function LabelsAfdrukkenPage() {
   const [adjustingStock, setAdjustingStock] = useState(false);
   const [printingLabels, setPrintingLabels] = useState(false);
   const [calibratingZebra, setCalibratingZebra] = useState(false);
-  const [printProgress, setPrintProgress] = useState<{ current: number; total: number } | null>(null);
   const [printer, setPrinter] = useState<PrinterType>('zebra');
   const [labelFormat, setLabelFormat] = useState<LabelFormat>('normal');
   const inputRef = useRef<HTMLInputElement>(null);
-  const printCancelRef = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('labelPrinter') as PrinterType | null;
@@ -322,81 +320,35 @@ export default function LabelsAfdrukkenPage() {
       const useZpl = printer === 'zebra' && labelFormat === 'normal';
 
       if (useZpl) {
-        let zpl: string | null = null;
         const zplRes = await fetch('/api/print-product-labels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...payload, output: 'zpl' }),
         });
+
         if (zplRes.ok) {
-          zpl = await zplRes.text();
-        }
+          const zpl = await zplRes.text();
+          const bridgeRes = await fetch('/api/print-zpl', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ zpl }),
+          }).catch(() => null);
 
-        if (zpl) {
-          const labels = zpl.split(/(?=\^XA)/).filter(s => s.trim());
-          const total = labels.length;
-          setPrintProgress({ current: 0, total });
-          printCancelRef.current = false;
-
-          let printed = 0;
-          let bridgeUnreachable = false;
-
-          for (let i = 0; i < labels.length; i++) {
-            if (printCancelRef.current) break;
-
-            const bridgeRes = await fetch('/api/print-zpl', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ zpl: labels[i] }),
-            }).catch(() => null);
-
-            if (!bridgeRes?.ok) {
-              if (printed === 0) {
-                bridgeUnreachable = true;
-              } else {
-                alert(`Fout bij label ${printed + 1} van ${total}. De resterende ${total - printed} labels staan nog in de lijst.`);
-              }
-              break;
-            }
-
-            printed++;
-            setPrintProgress({ current: printed, total });
-
-            const labelProductId = productIds[i];
-            setScannedProducts(prev => {
-              const product = prev.find(p => p.id === labelProductId);
-              if (!product) return prev;
-              if (product.count <= 1) return prev.filter(p => p.id !== labelProductId);
-              return prev.map(p =>
-                p.id === labelProductId ? { ...p, count: p.count - 1 } : p
-              );
-            });
-          }
-
-          setPrintProgress(null);
-
-          if (printed === total) {
+          if (bridgeRes?.ok) {
+            const total = (zpl.match(/\^XA/g) || []).length;
             alert(`Alle ${total} labels zijn naar de Zebra gestuurd.`);
+            setScannedProducts([]);
             setPrintingLabels(false);
             focusInput();
             return;
           }
-          if (printed > 0) {
-            if (printCancelRef.current) {
-              alert(`Afdrukken gestopt na ${printed} van ${total} labels. De resterende labels staan nog in de lijst.`);
-            }
+
+          const useFallback = confirm(
+            'Zebra-bridge niet bereikbaar of fout. Controleer de bridge (lokaal of via tunnel).\n\nNu afdrukken via het browser-printvenster?'
+          );
+          if (!useFallback) {
             setPrintingLabels(false);
-            focusInput();
             return;
-          }
-          if (bridgeUnreachable) {
-            const useFallback = confirm(
-              'Zebra-bridge niet bereikbaar of fout. Controleer de bridge (lokaal of via tunnel).\n\nNu afdrukken via het browser-printvenster?'
-            );
-            if (!useFallback) {
-              setPrintingLabels(false);
-              return;
-            }
           }
         } else {
           const useFallback = confirm(
@@ -772,37 +724,13 @@ export default function LabelsAfdrukkenPage() {
                   disabled={printingLabels || scannedProducts.length === 0}
                   className="flex-1 px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all text-lg flex items-center justify-center gap-2"
                 >
-                  {printProgress ? (
-                    <>⏳ Label {printProgress.current}/{printProgress.total}…</>
-                  ) : printingLabels ? (
-                    <>⏳ Labels genereren…</>
+                  {printingLabels ? (
+                    <>⏳ Labels versturen…</>
                   ) : (
                     <>🖨️ Labels Afdrukken ({totalLabels})</>
                   )}
                 </button>
               </div>
-              {printProgress && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">
-                      Label {printProgress.current} van {printProgress.total} verstuurd…
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => { printCancelRef.current = true; }}
-                      className="px-3 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium"
-                    >
-                      ✋ Stop
-                    </button>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className="bg-green-600 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${(printProgress.current / printProgress.total) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
               <p className="text-sm text-gray-500 mt-3">
                 💡 {labelFormat === 'small'
                   ? 'Klein formaat (25×25mm): alleen prijs en variant/maatreeks. '

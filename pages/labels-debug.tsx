@@ -14,6 +14,34 @@ import {
 const LABELARY_VIEWER = 'https://labelary.com/viewer.html';
 const LABELARY_API = 'https://api.labelary.com/v1';
 
+/** ZPL: Zebra calibratie met label-setup (51×25mm, direct thermal, web-sensing) + ~JC. */
+const ZPL_CALIBRATE = [
+  '^XA',
+  '^PW406',   // 51mm breed = 406 dots @ 203dpi
+  '^LL200',   // 25mm lang = 200 dots @ 203dpi
+  '^LH0,0',   // label home 0,0
+  '^MNY',     // non-continuous web/gap sensing (die-cut labels)
+  '^MTD',     // direct thermal
+  '^JUS',     // opslaan in EEPROM
+  '^XZ',
+  '~JC',      // sensor calibratie
+].join('');
+
+/** ZPL: Diepe reset - alle relevante printer-parameters + calibratie. */
+const ZPL_DEEP_CALIBRATE = [
+  '^XA',
+  '^PW406',   // 51mm breed
+  '^LL200',   // 25mm lang
+  '^LH0,0',   // label home
+  '^MNY',     // web/gap sensing
+  '^MTD',     // direct thermal
+  '^MD10',    // darkness midden (0-30)
+  '^PR4,4,4', // print speed 4 ips
+  '^JUS',     // opslaan in EEPROM
+  '^XZ',
+  '~JC',      // sensor calibratie
+].join('');
+
 const DEFAULT_LABEL: ZplLabelProduct = {
   id: 0,
   name: 'Claude & Co - Noa mustard knit vest',
@@ -68,6 +96,7 @@ export default function LabelsDebugPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [calibrating, setCalibrating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchZpl = async () => {
@@ -127,6 +156,35 @@ export default function LabelsDebugPage() {
       }
     } finally {
       setPrinting(false);
+    }
+  };
+
+  const calibratePrinter = async (deep = false) => {
+    const msg = deep
+      ? 'Diepe calibratie? Alle printerinstellingen (formaat, mediatype, darkness) worden gereset en opgeslagen. Doorgaan?'
+      : 'Printer calibreer? Labelformaat en mediatype worden ingesteld, daarna calibreert de sensor. Doorgaan?';
+    if (!confirm(msg)) return;
+    setCalibrating(true);
+    setError(null);
+    try {
+      const zpl = deep ? ZPL_DEEP_CALIBRATE : ZPL_CALIBRATE;
+      const res = await fetch('/api/print-zpl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zpl }),
+      }).catch(() => null);
+      if (res?.ok) {
+        alert(
+          deep
+            ? 'Diepe calibratie verstuurd. Alle instellingen zijn opgeslagen en de sensor is gekalibreerd.'
+            : 'Calibratie verstuurd. De printer kan nu een paar labels doorvoeren; daarna staat de uitlijning weer goed.'
+        );
+      } else {
+        const err = await res?.json().catch(() => ({}));
+        setError(err?.error || 'Calibratie mislukt. Controleer of de bridge bereikbaar is.');
+      }
+    } finally {
+      setCalibrating(false);
     }
   };
 
@@ -251,6 +309,24 @@ export default function LabelsDebugPage() {
             className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white rounded transition"
           >
             {printing ? 'Printen…' : 'Print naar Zebra'}
+          </button>
+          <button
+            type="button"
+            onClick={() => calibratePrinter(false)}
+            disabled={calibrating}
+            className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded transition"
+            title="Labelformaat instellen + sensor calibratie"
+          >
+            {calibrating ? 'Bezig…' : 'Calibreer'}
+          </button>
+          <button
+            type="button"
+            onClick={() => calibratePrinter(true)}
+            disabled={calibrating}
+            className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded transition"
+            title="Volledige reset: formaat, mediatype, darkness, snelheid + calibratie"
+          >
+            {calibrating ? 'Bezig…' : 'Diep calibreer'}
           </button>
         </div>
 

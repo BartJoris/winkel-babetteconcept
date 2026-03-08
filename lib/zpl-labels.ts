@@ -62,7 +62,7 @@ export interface ZplLabelOptions {
 
 /** Standaard typografie voor alle Zebra-labels (labels-debug en print-product-labels). */
 export const DEFAULT_LABEL_OPTIONS: Required<ZplLabelOptions> = {
-  marginTop: 50,
+  marginTop: 10,
   marginLeft:20,
   nameFontH: 22,
   nameLineH: 12,

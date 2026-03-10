@@ -123,6 +123,45 @@ export function generateZPL(products: ZplLabelProduct[], options?: ZplLabelOptio
   return blocks.join('\n');
 }
 
+/** Genereer ZPL voor een cadeaubon-label (51×25mm, 203 dpi). */
+export function generateVoucherZPL(voucher: {
+  code: string;
+  amount: number;
+  expiryDate?: string;
+}): string {
+  const labelWidthDots = Math.round(51 * (203 / 25.4)); // ~407
+  const labelHeightDots = Math.round(25 * (203 / 25.4)); // ~200
+  const marginLeft = 20;
+  const contentWidth = labelWidthDots - marginLeft * 2;
+
+  const amountStr = escapeZpl(formatPriceZpl(voucher.amount));
+  let expiryStr = '';
+  if (voucher.expiryDate) {
+    const d = new Date(voucher.expiryDate);
+    expiryStr = escapeZpl(
+      `geldig tot ${d.toLocaleDateString('nl-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+    );
+  }
+
+  let y = 10;
+  let z = `^XA^CI28`;
+  // Bedrag - groot, gecentreerd
+  z += `^CF0,30^FO${marginLeft},${y}^FB${contentWidth},1,0,C^FD${amountStr}^FS`;
+  y += 34;
+  // Vervaldatum
+  if (expiryStr) {
+    z += `^CF0,18^FO${marginLeft},${y}^FB${contentWidth},1,0,C^FD${expiryStr}^FS`;
+    y += 22;
+  }
+  // Barcode (Code 128) met code eronder
+  const barcodeHeight = Math.min(60, labelHeightDots - y - 16);
+  if (barcodeHeight >= 30) {
+    z += `^FO${marginLeft},${y}^BCN,${barcodeHeight},Y,N,N^FD${voucher.code}^FS`;
+  }
+  z += '^XZ';
+  return z;
+}
+
 /** Eerste label uit multi-label ZPL halen (voor preview) */
 export function getFirstLabelZpl(fullZpl: string): string {
   const match = fullZpl.match(/^(\^XA[\s\S]*?\^XZ)/m);

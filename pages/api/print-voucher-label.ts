@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
+import { generateVoucherZPL } from '@/lib/zpl-labels';
 const bwipjs = require('bwip-js');
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
@@ -167,8 +168,9 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-    const { voucherCode, voucherId, printer: printerParam } = req.body;
+    const { voucherCode, voucherId, printer: printerParam, output } = req.body;
     const printer: PrinterType = printerParam === 'dymo' ? 'dymo' : 'zebra';
+    const wantZpl = output === 'zpl';
 
     console.log('🖨️ Print Voucher Label - Code:', voucherCode, 'ID:', voucherId);
 
@@ -202,10 +204,13 @@ export default async function handler(
       return res.status(400).json({ error: 'Voucher code is required' });
     }
 
-    // Generate HTML label with barcode
-    const htmlContent = await generateLabelHTML(code, amount, expiryDate, printer);
+    if (wantZpl) {
+      const zpl = generateVoucherZPL({ code, amount, expiryDate });
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(200).send(zpl);
+    }
 
-    // Return HTML that will be converted to PDF by the browser
+    const htmlContent = await generateLabelHTML(code, amount, expiryDate, printer);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(200).send(htmlContent);
   } catch (error) {

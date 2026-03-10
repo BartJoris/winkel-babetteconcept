@@ -30,6 +30,58 @@ export default function CadeaubonAanmakenPage() {
     setVoucherExpiry(defaultExpiry);
   }, []);
 
+  const printVoucherZebra = async (code: string, voucherId: number) => {
+    try {
+      const zplRes = await fetch('/api/print-voucher-label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voucherCode: code, voucherId, printer: 'zebra', output: 'zpl' }),
+      });
+      if (!zplRes.ok) throw new Error('ZPL ophalen mislukt');
+      const zpl = await zplRes.text();
+
+      const bridgeRes = await fetch('/api/print-zpl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zpl }),
+      }).catch(() => null);
+
+      if (bridgeRes?.ok) {
+        alert('Cadeaubon-label naar Zebra gestuurd.');
+        return;
+      }
+
+      const useFallback = confirm(
+        'Zebra-bridge niet bereikbaar. Controleer de bridge.\n\nNu afdrukken via het browser-printvenster?'
+      );
+      if (useFallback) printVoucherBrowser(code, voucherId);
+    } catch (err) {
+      console.error('Zebra voucher print error:', err);
+      alert('Fout bij printen naar Zebra');
+    }
+  };
+
+  const printVoucherBrowser = (code: string, voucherId: number) => {
+    const labelWindow = window.open('', '_blank', 'width=400,height=300');
+    if (!labelWindow) return;
+    fetch('/api/print-voucher-label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voucherCode: code, voucherId, printer }),
+    })
+      .then((r) => r.text())
+      .then((html) => {
+        labelWindow.document.write(html);
+        labelWindow.document.close();
+        setTimeout(() => labelWindow.print(), 500);
+      })
+      .catch((err) => {
+        console.error('Error loading label:', err);
+        labelWindow.close();
+        alert('Fout bij laden van label');
+      });
+  };
+
   const handleCreateVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -67,30 +119,10 @@ export default function CadeaubonAanmakenPage() {
         );
         
         if (printLabel) {
-          const labelWindow = window.open('', '_blank', 'width=400,height=300');
-          if (labelWindow) {
-            fetch('/api/print-voucher-label', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                voucherCode: code,
-                voucherId: voucher.id,
-                printer,
-              }),
-            })
-            .then(r => r.text())
-            .then(html => {
-              labelWindow.document.write(html);
-              labelWindow.document.close();
-              setTimeout(() => {
-                labelWindow.print();
-              }, 500);
-            })
-            .catch(err => {
-              console.error('Error loading label:', err);
-              labelWindow.close();
-              alert('Fout bij laden van label');
-            });
+          if (printer === 'zebra') {
+            await printVoucherZebra(code, voucher.id);
+          } else {
+            printVoucherBrowser(code, voucher.id);
           }
         } else {
           navigator.clipboard.writeText(code).then(() => {

@@ -54,7 +54,7 @@ export default function Navigation() {
   ];
 
   return (
-    <nav className="bg-white shadow-lg border-b">
+    <nav className="bg-white shadow-lg border-b" suppressHydrationWarning>
       {/* Environment indicator banner - only show if NOT production */}
       {envInfo && !envInfo.isProduction && (
         <div className="bg-blue-600 text-white px-4 py-2">
@@ -76,7 +76,7 @@ export default function Navigation() {
           </Link>
 
           {/* Navigation with Pictograms - Desktop & Mobile */}
-          <div className="flex items-center gap-1 md:gap-3 flex-1 mx-4 justify-center md:justify-end">
+          <div className="flex items-center gap-1 md:gap-3 flex-1 mx-4 justify-center md:justify-end" suppressHydrationWarning>
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -87,8 +87,9 @@ export default function Navigation() {
                     : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
                 }`}
                 title={item.label}
+                suppressHydrationWarning
               >
-                <span className="text-lg md:text-2xl">{item.icon}</span>
+                <span className="text-lg md:text-2xl" suppressHydrationWarning>{item.icon}</span>
                 <span className="hidden md:inline text-xs md:text-sm">{item.label}</span>
               </Link>
             ))}

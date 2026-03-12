@@ -19,6 +19,16 @@ interface ScannedProduct {
   stockError?: string;
 }
 
+interface SearchResult {
+  id: number;
+  name: string;
+  barcode: string | null;
+  qty_available: number;
+  list_price: number;
+  attributes: string | null;
+  productTmplId: number | null;
+}
+
 const formatEuro = (amount: number) =>
   amount.toLocaleString('nl-BE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
 
@@ -60,6 +70,9 @@ export default function LabelsAfdrukkenPage() {
   const [calibratingZebra, setCalibratingZebra] = useState(false);
   const [printer, setPrinter] = useState<PrinterType>('zebra');
   const [labelFormat, setLabelFormat] = useState<LabelFormat>('normal');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [variantsLoading, setVariantsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -135,8 +148,7 @@ export default function LabelsAfdrukkenPage() {
           const g = json.giftCard;
           const expiry = g.expiration_date ? new Date(g.expiration_date).toLocaleDateString('nl-BE') : '';
           alert(`🎁 Cadeaubon herkend\n\nCode: ${g.code}\nSaldo: €${Number(g.balance ?? g.points ?? 0).toFixed(2)}${expiry ? `\nGeldig tot: ${expiry}` : ''}\n\nGebruik de kassa (Odoo POS) om de bon te verzilveren.`);
-        } else if (json.isSearchResults) {
-          // Multiple results - we can't auto-add, but take the first exact barcode match
+        } else         if (json.isSearchResults) {
           const exactMatch = json.searchResults.find(
             (p: any) => p.barcode === trimmed
           );
@@ -145,7 +157,8 @@ export default function LabelsAfdrukkenPage() {
           } else if (json.searchResults.length === 1) {
             addProduct(json.searchResults[0]);
           } else {
-            alert(`Meerdere producten gevonden voor "${trimmed}". Gebruik de Voorraad Opzoeken pagina voor naam-zoekopdrachten.`);
+            setSearchResults(json.searchResults);
+            setSearchQuery(trimmed);
           }
         } else {
           // Single product with variants - add the scanned variant
@@ -201,6 +214,50 @@ export default function LabelsAfdrukkenPage() {
         },
       ];
     });
+  };
+
+  const handleSearchResultClick = async (product: SearchResult) => {
+    const wantAll = product.productTmplId != null && confirm(
+      `Alle varianten van "${product.name}" toevoegen?\n\nKlik "OK" voor alle varianten, of "Annuleren" voor enkel deze variant.`
+    );
+
+    if (wantAll && product.productTmplId != null) {
+      setVariantsLoading(true);
+      try {
+        const res = await fetch('/api/scan-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: product.id }),
+        });
+        const json = await res.json();
+        if (json.success && json.variants) {
+          for (const v of json.variants) {
+            addProduct({
+              id: v.id,
+              name: v.name || json.productName,
+              barcode: v.barcode,
+              list_price: v.list_price,
+              qty_available: v.qty_available,
+              attributes: v.attributes,
+              sizeRange: json.sizeRange ?? null,
+              productTmplId: json.productTmplId ?? null,
+            });
+          }
+        } else {
+          addProduct(product);
+        }
+      } catch {
+        addProduct(product);
+      } finally {
+        setVariantsLoading(false);
+      }
+    } else {
+      addProduct(product);
+    }
+
+    setSearchResults([]);
+    setSearchQuery('');
+    focusInput();
   };
 
   const updateCount = (id: number, count: number) => {
@@ -505,7 +562,7 @@ export default function LabelsAfdrukkenPage() {
                   type="text"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Scan barcode..."
+                  placeholder="Scan barcode of zoek op naam..."
                   className="w-full px-4 py-3 pr-10 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-lg"
                   autoFocus
                   disabled={scanLoading}
@@ -537,6 +594,92 @@ export default function LabelsAfdrukkenPage() {
               </div>
             )}
           </div>
+
+          {/* Search Results Modal */}
+          {searchResults.length > 0 && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-[10vh] px-4" onClick={() => { setSearchResults([]); setSearchQuery(''); }}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      🔍 Zoekresultaten voor &ldquo;{searchQuery}&rdquo;
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {searchResults.length} resultaten — klik om toe te voegen
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setSearchResults([]); setSearchQuery(''); }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
+                  {variantsLoading && (
+                    <div className="px-6 py-8 text-center text-gray-500 font-medium">
+                      ⏳ Varianten ophalen...
+                    </div>
+                  )}
+                  {!variantsLoading && (() => {
+                    const grouped = new Map<number | string, SearchResult[]>();
+                    for (const r of searchResults) {
+                      const key = r.productTmplId ?? `single-${r.id}`;
+                      if (!grouped.has(key)) grouped.set(key, []);
+                      grouped.get(key)!.push(r);
+                    }
+                    return Array.from(grouped.entries()).map(([groupKey, items]) => {
+                      const isGroup = items.length > 1 && typeof groupKey === 'number';
+                      return (
+                        <div key={String(groupKey)}>
+                          {isGroup && (
+                            <div className="px-6 py-2 bg-sky-50 text-xs font-semibold text-sky-700 flex items-center gap-1.5 border-b border-sky-100">
+                              <span>🔗 {items.length} varianten</span>
+                            </div>
+                          )}
+                          {items.map((r) => (
+                            <button
+                              key={r.id}
+                              onClick={() => handleSearchResultClick(r)}
+                              disabled={variantsLoading}
+                              className={`w-full text-left px-6 py-3 hover:bg-green-50 transition-colors flex items-center gap-4 disabled:opacity-50 ${
+                                isGroup ? 'pl-10' : ''
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-900 text-sm truncate">{r.name}</div>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {r.attributes && (
+                                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{r.attributes}</span>
+                                  )}
+                                  {r.barcode && (
+                                    <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{r.barcode}</span>
+                                  )}
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                    r.qty_available > 0 ? 'text-green-700 bg-green-100' : 'text-orange-700 bg-orange-100'
+                                  }`}>
+                                    Voorraad: {r.qty_available}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                {formatEuro(r.list_price)}
+                              </div>
+                              <svg className="w-5 h-5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Scanned Products List */}
           {scannedProducts.length > 0 && (

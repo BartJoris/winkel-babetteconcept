@@ -154,7 +154,7 @@ export default async function handler(
 
     // Light mode: fast scan returning only the scanned product (no images, no variants)
     if (light && barcode) {
-      const products = await odooCall<any[]>({
+      let products = await odooCall<any[]>({
         uid,
         password,
         model: 'product.product',
@@ -184,10 +184,71 @@ export default async function handler(
             },
           });
         }
-        return res.status(404).json({
-          success: false,
-          error: `Geen product gevonden met barcode: ${barcode}`,
+
+        // Fallback: name/barcode partial search
+        const nameResults = await odooCall<any[]>({
+          uid,
+          password,
+          model: 'product.product',
+          method: 'search_read',
+          args: [[
+            '|',
+            ['name', 'ilike', barcode.trim()],
+            ['barcode', 'ilike', barcode.trim()],
+            ['active', '=', true]
+          ]],
+          kwargs: {
+            fields: [...productFields, 'product_template_attribute_value_ids'],
+            limit: 50,
+            order: 'name asc',
+          },
         });
+
+        if (nameResults.length === 0) {
+          return res.status(404).json({
+            success: false,
+            error: `Geen product gevonden met barcode of naam: ${barcode}`,
+          });
+        }
+
+        if (nameResults.length === 1) {
+          // Single result: treat as if barcode was scanned — continue below
+          products = nameResults;
+        } else {
+          // Multiple results: return search results with attributes + template id
+          const allAttrIds: number[] = [];
+          nameResults.forEach(p => {
+            if (Array.isArray(p.product_template_attribute_value_ids)) {
+              allAttrIds.push(...p.product_template_attribute_value_ids);
+            }
+          });
+          const attributeValueMap = await fetchAttributeValues(uid, password, allAttrIds);
+
+          return res.status(200).json({
+            success: true,
+            isSearchResults: true,
+            searchResults: nameResults.map(p => {
+              const attrIds = p.product_template_attribute_value_ids || [];
+              const attributes = attrIds
+                .map((id: number) => attributeValueMap[id])
+                .filter((attr: any) => attr && !attr.attributeName.toLowerCase().includes('merk'))
+                .map((attr: any) => attr.name)
+                .join(', ');
+              const tmplId = p.product_tmpl_id && typeof p.product_tmpl_id !== 'boolean'
+                ? p.product_tmpl_id[0] : null;
+              return {
+                id: p.id,
+                name: p.name,
+                barcode: p.barcode,
+                qty_available: p.qty_available,
+                list_price: p.list_price,
+                attributes: attributes || null,
+                productTmplId: tmplId,
+              };
+            }),
+            totalResults: nameResults.length,
+          });
+        }
       }
 
       const p = products[0];
@@ -400,6 +461,8 @@ export default async function handler(
               .filter((attr: any) => attr && !attr.attributeName.toLowerCase().includes('merk'))
               .map((attr: any) => attr.name)
               .join(', ');
+            const tmplId = p.product_tmpl_id && typeof p.product_tmpl_id !== 'boolean'
+              ? p.product_tmpl_id[0] : null;
 
             return {
               id: p.id,
@@ -408,6 +471,7 @@ export default async function handler(
               qty_available: p.qty_available,
               list_price: p.list_price,
               attributes: attributes || null,
+              productTmplId: tmplId,
             };
           }),
           totalResults: products.length,

@@ -583,32 +583,42 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
   });
 
   // Sort variants by attributes (numerically if they contain numbers like "3 jaar", "5 jaar")
+  const toMonths = (s: string): number | null => {
+    const m = s.match(/(\d+)\s*maand/i);
+    if (m) return parseInt(m[1]);
+    const j = s.match(/(\d+)\s*jaar/i);
+    if (j) return parseInt(j[1]) * 12;
+    const n = s.match(/(\d+)/);
+    if (n) return parseInt(n[1]);
+    return null;
+  };
+
   variants.sort((a, b) => {
     if (!a.attributes && !b.attributes) return 0;
     if (!a.attributes) return 1;
     if (!b.attributes) return -1;
     
-    // Try to extract numbers from attributes for sorting (e.g., "3 jaar" -> 3)
-    const aMatch = a.attributes.match(/(\d+)/);
-    const bMatch = b.attributes.match(/(\d+)/);
-    
-    if (aMatch && bMatch) {
-      const aNum = parseInt(aMatch[1]);
-      const bNum = parseInt(bMatch[1]);
-      if (aNum !== bNum) {
-        return aNum - bNum; // Numerical sort
-      }
-    }
-    
-    // Fallback to alphabetical sort
+    const aVal = toMonths(a.attributes);
+    const bVal = toMonths(b.attributes);
+    if (aVal !== null && bVal !== null) return aVal - bVal;
     return a.attributes.localeCompare(b.attributes);
   });
+
+  // Compute sizeRange from all variant attributes
+  let sizeRange: string | null = null;
+  const sizeValues = variants
+    .map(v => v.attributes)
+    .filter((a): a is string => !!a);
+  if (sizeValues.length > 1) {
+    sizeRange = `${sizeValues[0]} - ${sizeValues[sizeValues.length - 1]}`;
+  }
 
   return {
     success: true,
     productName: productName,
     productTmplId: templateId,
     scannedVariantId: scannedProduct.id,
+    sizeRange,
     variants: variants,
     totalVariants: variants.length,
   };

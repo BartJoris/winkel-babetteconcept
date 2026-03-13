@@ -398,8 +398,9 @@ export default function LabelsAfdrukkenPage() {
 
           if (bridgeRes?.ok) {
             const total = (zpl.match(/\^XA/g) || []).length;
-            alert(`Alle ${total} labels zijn naar de Zebra gestuurd.`);
-            setScannedProducts([]);
+            if (confirm(`Alle ${total} labels zijn naar de Zebra gestuurd.\n\nWil je de lijst leegmaken?`)) {
+              setScannedProducts([]);
+            }
             setPrintingLabels(false);
             focusInput();
             return;

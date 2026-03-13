@@ -87,6 +87,17 @@ Als de bridge op de server draait, kun je vanaf **elk apparaat** (tablet, telefo
 
 **Bridge bereikbaar voor Vercel:** zie [scripts/README-Cloudflare-Tunnel-Zebra.md](scripts/README-Cloudflare-Tunnel-Zebra.md) voor zebra.babetteconcept.be via Cloudflare Tunnel.
 
+### Odoo labels (ZPL folder watcher)
+
+Voor labels vanuit **Odoo** (Inventory → Print Label → Zebra) die als tekstbestand gedownload worden: de **ZPL folder watcher** bewaakt `~/Downloads` en print ZPL-bestanden automatisch naar de Zebra.
+
+Zie **[scripts/README-Odoo-Zebra-Watcher.md](scripts/README-Odoo-Zebra-Watcher.md)** voor installatie en configuratie.
+
+Snel installeren:
+```bash
+./scripts/install-zpl-folder-watcher-service.sh
+```
+
 ### Next.js app automatisch starten (Mac)
 
 Om de winkel-app op je Mac bij inloggen te starten (zodat je niet handmatig `npm run dev` of `npm start` hoeft te doen):
@@ -169,8 +180,11 @@ winkel/
 │   └── ...
 ├── scripts/
 │   ├── print-zebra-bridge.js
+│   ├── zpl-folder-watcher.js            # Odoo ZPL downloads → Zebra
 │   ├── install-print-zebra-bridge-service.sh
-│   └── README-Zebra-printer.md
+│   ├── install-zpl-folder-watcher-service.sh
+│   ├── README-Zebra-printer.md
+│   └── README-Odoo-Zebra-Watcher.md
 └── ...
 ```
 

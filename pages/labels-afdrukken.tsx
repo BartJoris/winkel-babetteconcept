@@ -217,42 +217,47 @@ export default function LabelsAfdrukkenPage() {
   };
 
   const handleSearchResultClick = async (product: SearchResult) => {
-    const wantAll = product.productTmplId != null && confirm(
-      `Alle varianten van "${product.name}" toevoegen?\n\nKlik "OK" voor alle varianten, of "Annuleren" voor enkel deze variant.`
-    );
+    setVariantsLoading(true);
+    try {
+      const res = await fetch('/api/scan-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: product.id }),
+      });
+      const json = await res.json();
 
-    if (wantAll && product.productTmplId != null) {
-      setVariantsLoading(true);
-      try {
-        const res = await fetch('/api/scan-product', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId: product.id }),
-        });
-        const json = await res.json();
-        if (json.success && json.variants) {
-          for (const v of json.variants) {
-            addProduct({
-              id: v.id,
-              name: v.name || json.productName,
-              barcode: v.barcode,
-              list_price: v.list_price,
-              qty_available: v.qty_available,
-              attributes: v.attributes,
-              sizeRange: json.sizeRange ?? null,
-              productTmplId: json.productTmplId ?? null,
-            });
-          }
-        } else {
-          addProduct(product);
+      const sizeRange = json.sizeRange ?? null;
+      const productTmplId = json.productTmplId ?? product.productTmplId ?? null;
+      const variants = json.success ? json.variants ?? [] : [];
+
+      const wantAll = variants.length > 1 && confirm(
+        `Alle ${variants.length} varianten van "${json.productName || product.name}" toevoegen?\n\nKlik "OK" voor alle varianten, of "Annuleren" voor enkel deze variant.`
+      );
+
+      if (wantAll) {
+        for (const v of variants) {
+          addProduct({
+            id: v.id,
+            name: v.name || json.productName,
+            barcode: v.barcode,
+            list_price: v.list_price,
+            qty_available: v.qty_available,
+            attributes: v.attributes,
+            sizeRange,
+            productTmplId,
+          });
         }
-      } catch {
-        addProduct(product);
-      } finally {
-        setVariantsLoading(false);
+      } else {
+        addProduct({
+          ...product,
+          sizeRange,
+          productTmplId,
+        });
       }
-    } else {
+    } catch {
       addProduct(product);
+    } finally {
+      setVariantsLoading(false);
     }
 
     setSearchResults([]);

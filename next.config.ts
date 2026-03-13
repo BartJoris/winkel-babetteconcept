@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
+  allowedDevOrigins: ['192.168.1.*'],
   
   // Required for Docker/OpenShift deployment
   output: 'standalone',

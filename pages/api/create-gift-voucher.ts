@@ -1,10 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { randomUUID } from 'crypto';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
 const ODOO_DB = process.env.ODOO_DB || 'babetteconcept';
+
+function calcEan13Check(digits12: string): string {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(digits12[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  return String((10 - (sum % 10)) % 10);
+}
 
 async function odooCall<T>(params: {
   uid: number;
@@ -158,10 +165,10 @@ export default async function handler(
       console.log('ℹ️ No customer specified - creating anonymous voucher');
     }
 
-    // Exact hetzelfde formaat als Odoo zelf (loyalty/models/loyalty_card.py: _generate_code)
-    // '044' + uuid[7:18] → barcode herkenbaar in POS en handmatig opzoeken werkt
-    const uuid = randomUUID();
-    const odooStyleCode = '044' + uuid.slice(7, 18);
+    // EAN-13 code: 044 + 9 random cijfers + checkdigit → scanbaar met elke barcodescanner
+    const digits12 = '044' + Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
+    const checkDigit = calcEan13Check(digits12);
+    const odooStyleCode = digits12 + checkDigit;
 
     const cardData: any = {
       program_id: programId,

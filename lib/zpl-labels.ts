@@ -124,6 +124,14 @@ export function generateZPL(products: ZplLabelProduct[], options?: ZplLabelOptio
 }
 
 /** Genereer ZPL voor een cadeaubon-label (51×25mm, 203 dpi). */
+function generateBarcodeZpl(code: string, x: number, y: number, height: number): string {
+  const isEan13 = /^\d{13}$/.test(code);
+  if (isEan13) {
+    return `^FO${x},${y}^BEN,${height},Y,N^FD${code}^FS`;
+  }
+  return `^FO${x},${y}^BCN,${height},Y,N,N^FD${code}^FS`;
+}
+
 export function generateVoucherZPL(voucher: {
   code: string;
   amount: number;
@@ -133,6 +141,16 @@ export function generateVoucherZPL(voucher: {
   const labelHeightDots = Math.round(25 * (203 / 25.4)); // ~200
   const marginLeft = 20;
   const contentWidth = labelWidthDots - marginLeft * 2;
+
+  // Blanco kaart: alleen barcode, geen bedrag/datum
+  if (voucher.amount <= 0 && !voucher.expiryDate) {
+    const barcodeHeight = Math.min(120, labelHeightDots - 40);
+    let z = `^XA^CI28`;
+    z += `^CF0,18^FO${marginLeft},8^FB${contentWidth},1,0,C^FDCadeaubon^FS`;
+    z += generateBarcodeZpl(voucher.code, marginLeft, 30, barcodeHeight);
+    z += '^XZ';
+    return z;
+  }
 
   const amountStr = escapeZpl(formatPriceZpl(voucher.amount));
   let expiryStr = '';
@@ -145,18 +163,15 @@ export function generateVoucherZPL(voucher: {
 
   let y = 10;
   let z = `^XA^CI28`;
-  // Bedrag - groot, gecentreerd
   z += `^CF0,30^FO${marginLeft},${y}^FB${contentWidth},1,0,C^FD${amountStr}^FS`;
   y += 34;
-  // Vervaldatum
   if (expiryStr) {
     z += `^CF0,18^FO${marginLeft},${y}^FB${contentWidth},1,0,C^FD${expiryStr}^FS`;
     y += 22;
   }
-  // Barcode (Code 128) met code eronder
   const barcodeHeight = Math.min(60, labelHeightDots - y - 16);
   if (barcodeHeight >= 30) {
-    z += `^FO${marginLeft},${y}^BCN,${barcodeHeight},Y,N,N^FD${voucher.code}^FS`;
+    z += generateBarcodeZpl(voucher.code, marginLeft, y, barcodeHeight);
   }
   z += '^XZ';
   return z;

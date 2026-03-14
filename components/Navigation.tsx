@@ -49,7 +49,8 @@ export default function Navigation() {
     { path: '/labels-afdrukken', label: 'Labels', icon: '🏷️' },
     { path: '/labels-debug', label: 'Label test', icon: '🔧' },
     { path: '/webshoporders-beheren', label: 'Webshoporders', icon: '📦' },
-    { path: '/cadeaubon-aanmaken', label: 'Cadeaubon', icon: '🎁' },
+    { path: '/cadeaukaarten-aanmaken', label: 'Cadeaubon Printen', icon: '🎁' },
+    { path: '/cadeaubon-opzoeken', label: 'Cadeaubon Opzoeken', icon: '🔎' },
     { path: '/afval', label: 'Afval', icon: '♻️' },
   ];
 
@@ -68,40 +69,37 @@ export default function Navigation() {
         </div>
       )}
       
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo/Brand */}
-          <Link href="/voorraad-opzoeken" className="text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors flex-shrink-0">
-            🏪 Babette Winkel
+      <div className="max-w-7xl mx-auto px-2 sm:px-4">
+        <div className="flex items-center h-14 gap-2">
+          <Link href="/voorraad-opzoeken" className="text-base sm:text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors flex-shrink-0 mr-1">
+            🏪 <span className="hidden sm:inline">Babette</span>
           </Link>
 
-          {/* Navigation with Pictograms - Desktop & Mobile */}
-          <div className="flex items-center gap-1 md:gap-3 flex-1 mx-4 justify-center md:justify-end" suppressHydrationWarning>
+          <div className="flex items-center gap-0.5 sm:gap-1 flex-1 justify-end flex-wrap" suppressHydrationWarning>
             {navItems.map((item) => (
               <Link
                 key={item.path}
                 href={item.path}
-                className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 py-2 rounded-lg text-sm md:text-base font-medium transition-all ${
+                className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   isActive(item.path)
-                    ? 'bg-blue-100 text-blue-700 shadow-md'
+                    ? 'bg-blue-100 text-blue-700 shadow-sm'
                     : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
                 }`}
                 title={item.label}
                 suppressHydrationWarning
               >
-                <span className="text-lg md:text-2xl" suppressHydrationWarning>{item.icon}</span>
-                <span className="hidden md:inline text-xs md:text-sm">{item.label}</span>
+                <span className="text-base sm:text-lg" suppressHydrationWarning>{item.icon}</span>
+                <span className="hidden lg:inline">{item.label}</span>
               </Link>
             ))}
 
-            {/* Logout button */}
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 py-2 rounded-lg text-sm md:text-base font-medium text-red-600 hover:text-red-700 hover:bg-red-50 transition-all"
+              className="flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 transition-all"
               title="Uitloggen"
             >
-              <span className="text-lg md:text-2xl">🚪</span>
-              <span className="hidden md:inline text-xs md:text-sm">Uitloggen</span>
+              <span className="text-base sm:text-lg">🚪</span>
+              <span className="hidden lg:inline">Uit</span>
             </button>
           </div>
         </div>

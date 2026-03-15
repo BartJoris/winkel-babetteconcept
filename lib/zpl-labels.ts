@@ -142,11 +142,18 @@ export function generateVoucherZPL(voucher: {
   const marginLeft = 20;
   const contentWidth = labelWidthDots - marginLeft * 2;
 
-  // Blanco kaart: titel + barcode, geen bedrag/datum
+  // Blanco kaart: code + barcode, beide gecentreerd
   if (voucher.amount <= 0 && !voucher.expiryDate) {
+    const isEan13 = /^\d{13}$/.test(voucher.code);
+    const eanWidth = 190;
+    const barcodeX = Math.round((labelWidthDots - eanWidth) / 2);
     let z = `^XA^CI28`;
-    z += `^CF0,28^FO${marginLeft},10^FB${contentWidth},1,0,C^FDCadeaubon^FS`;
-    z += generateBarcodeZpl(voucher.code, marginLeft, 48, 80);
+    z += `^CF0,24^FO0,12^FB${labelWidthDots},1,0,C^FD${voucher.code}^FS`;
+    if (isEan13) {
+      z += `^FO${barcodeX},46^BEN,90,N,N^FD${voucher.code}^FS`;
+    } else {
+      z += `^FO0,46^BCN,90,N,N,N,A^FD${voucher.code}^FS`;
+    }
     z += '^XZ';
     return z;
   }

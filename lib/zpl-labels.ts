@@ -142,12 +142,11 @@ export function generateVoucherZPL(voucher: {
   const marginLeft = 20;
   const contentWidth = labelWidthDots - marginLeft * 2;
 
-  // Blanco kaart: alleen barcode, geen bedrag/datum
+  // Blanco kaart: titel + barcode, geen bedrag/datum
   if (voucher.amount <= 0 && !voucher.expiryDate) {
-    const barcodeHeight = Math.min(120, labelHeightDots - 40);
     let z = `^XA^CI28`;
-    z += `^CF0,18^FO${marginLeft},8^FB${contentWidth},1,0,C^FDCadeaubon^FS`;
-    z += generateBarcodeZpl(voucher.code, marginLeft, 30, barcodeHeight);
+    z += `^CF0,28^FO${marginLeft},10^FB${contentWidth},1,0,C^FDCadeaubon^FS`;
+    z += generateBarcodeZpl(voucher.code, marginLeft, 48, 80);
     z += '^XZ';
     return z;
   }

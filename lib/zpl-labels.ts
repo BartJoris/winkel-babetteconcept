@@ -107,7 +107,7 @@ export function generateZPL(products: ZplLabelProduct[], options?: ZplLabelOptio
     const priceLine = escapeZpl(formatPriceZpl(p.list_price));
 
     let y = marginTop;
-    let z = `^XA^CI28\n`;
+    let z = `^XA^CI28^LT0^LS0\n`;
     z += `^FO${marginLeft},${y}^A0N,${nameFontH},0^FB${contentWidth},${nameLines},0,L^FD${name}^FS\n`;
     y += nameLines * nameLineH + nameToVariantGap;
     if (variantLine) {

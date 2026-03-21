@@ -38,6 +38,7 @@ const ZPL_CALIBRATE = [
   '^PW406',   // 51mm breed = 406 dots @ 203dpi
   '^LL200',   // 25mm lang = 200 dots @ 203dpi
   '^LH0,0',   // label home 0,0
+  '^LT0',     // label top offset reset
   '^MNY',     // non-continuous web/gap sensing (die-cut labels)
   '^MTD',     // direct thermal
   '^JUS',     // opslaan in EEPROM
@@ -51,6 +52,7 @@ const ZPL_DEEP_CALIBRATE = [
   '^PW406',   // 51mm breed
   '^LL200',   // 25mm lang
   '^LH0,0',   // label home
+  '^LT0',     // label top offset reset
   '^MNY',     // web/gap sensing
   '^MTD',     // direct thermal
   '^MD10',    // darkness midden (0-30)

@@ -103,19 +103,22 @@ export function generateZPL(products: ZplLabelProduct[], options?: ZplLabelOptio
   const blocks = products.map((p) => {
     const name = escapeZpl(p.name, 140);
     const variant = [p.attributes, p.sizeRange ? abbreviateRange(p.sizeRange) : ''].filter(Boolean).join(' - ');
-    const variantLine = escapeZpl(variant);
+    const variantLine = variant ? escapeZpl(variant) : '';
     const priceLine = escapeZpl(formatPriceZpl(p.list_price));
 
     let y = marginTop;
-    let z = `^XA^CI28^CF0,${nameFontH}^FO${marginLeft},${y}^FB${contentWidth},${nameLines},0^FD${name}^FS`;
+    let z = `^XA^CI28\n`;
+    z += `^FO${marginLeft},${y}^A0N,${nameFontH},0^FB${contentWidth},${nameLines},0,L^FD${name}^FS\n`;
     y += nameLines * nameLineH + nameToVariantGap;
-    z += `^CF0,${variantFontH}^FO${marginLeft},${y}^FB${contentWidth},1,0^FD${variantLine}^FS`;
+    if (variantLine) {
+      z += `^FO${marginLeft},${y}^A0N,${variantFontH},0^FB${contentWidth},1,0,L^FD${variantLine}^FS\n`;
+    }
     y += variantFontH + variantToPriceGap;
-    z += `^CF0,${priceH}^FO${marginLeft},${y}^FB${contentWidth},1,1^FD${priceLine}^FS`;
+    z += `^FO${marginLeft},${y}^A0N,${priceH},0^FB${contentWidth},1,0,L^FD${priceLine}^FS\n`;
     y += priceH + 4;
     const barcodeHeight = Math.min(barcodeBarMaxHeight, labelHeightDots - y - barcodeBottomMargin);
     if (p.barcode && barcodeHeight >= 26) {
-      z += `^FO${marginLeft},${y}^BCN,${barcodeHeight},Y,N,N^FD${p.barcode}^FS`;
+      z += `^FO${marginLeft},${y}^BCN,${barcodeHeight},Y,N,N^FD${p.barcode}^FS\n`;
     }
     z += '^XZ';
     return z;

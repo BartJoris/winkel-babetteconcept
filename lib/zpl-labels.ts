@@ -63,13 +63,13 @@ export interface ZplLabelOptions {
 /** Standaard typografie voor alle Zebra-labels (labels-debug en print-product-labels). */
 export const DEFAULT_LABEL_OPTIONS: Required<ZplLabelOptions> = {
   marginTop: 10,
-  marginLeft:20,
+  marginLeft: 20,
   nameFontH: 22,
-  nameLineH: 12,
-  nameLines: 3,
-  nameToVariantGap: 0,
+  nameLineH: 22,
+  nameLines: 2,
+  nameToVariantGap: 2,
   variantFontH: 20,
-  variantToPriceGap: 15,
+  variantToPriceGap: 4,
   priceH: 30,
   barcodeBarMaxHeight: 34,
   barcodeBottomMargin: 16,

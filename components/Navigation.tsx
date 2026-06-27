@@ -46,6 +46,7 @@ export default function Navigation() {
 
   const navItems = [
     { path: '/voorraad-opzoeken', label: 'Voorraad opzoeken', icon: '🔍' },
+    { path: '/voorraad-aanpassen', label: 'Voorraad aanpassen', icon: '📦' },
     { path: '/labels-afdrukken', label: 'Labels', icon: '🏷️' },
     { path: '/labels-debug', label: 'Label test', icon: '🔧' },
     { path: '/webshoporders-beheren', label: 'Webshoporders', icon: '📦' },

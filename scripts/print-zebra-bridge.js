@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * Lokale bridge: ontvangt ZPL via POST /print en stuurt naar Zebra met lpr -o raw.
- * Elk label (^XA...^XZ) wordt apart verstuurd om CUPS form-feed problemen te vermijden.
  * Start met: node scripts/print-zebra-bridge.js
  * Of: ZEBRA_PRINTER="MijnZebra" node scripts/print-zebra-bridge.js
  */
@@ -12,7 +11,7 @@ const PORT = parseInt(process.env.PORT || '9333', 10);
 const PRINTER = process.env.ZEBRA_PRINTER || 'Zebra_Technologies_ZTC_ZD421_203dpi_ZPL';
 const BRIDGE_SECRET = process.env.ZPL_BRIDGE_SECRET || '';
 
-function printOneLabel(zpl) {
+function printZpl(zpl) {
   return new Promise((resolve, reject) => {
     const proc = spawn('/usr/bin/lpr', ['-P', PRINTER, '-o', 'raw'], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -30,16 +29,6 @@ function printOneLabel(zpl) {
       }
     });
   });
-}
-
-function splitLabels(zpl) {
-  const labels = [];
-  const regex = /\^XA[\s\S]*?\^XZ/g;
-  let match;
-  while ((match = regex.exec(zpl)) !== null) {
-    labels.push(match[0]);
-  }
-  return labels;
 }
 
 const server = http.createServer((req, res) => {
@@ -78,20 +67,13 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    const labels = splitLabels(zpl);
-    if (labels.length === 0) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'No valid ZPL labels found (missing ^XA/^XZ)' }));
-      return;
-    }
+    const labelCount = (zpl.match(/\^XA/g) || []).length;
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     try {
-      for (const label of labels) {
-        await printOneLabel(label);
-      }
+      await printZpl(zpl);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, labels: labels.length }));
+      res.end(JSON.stringify({ ok: true, labels: labelCount }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'lpr failed', details: err.message }));

@@ -107,7 +107,7 @@ export function generateZPL(products: ZplLabelProduct[], options?: ZplLabelOptio
     const priceLine = escapeZpl(formatPriceZpl(p.list_price));
 
     let y = marginTop;
-    let z = `^XA^CI28^LT0^LS0\n`;
+    let z = `^XA^CI28^PW${labelWidthDots}^LL${labelHeightDots}^LT0^LS0\n`;
     z += `^FO${marginLeft},${y}^A0N,${nameFontH},0^FB${contentWidth},${nameLines},0,L^FD${name}^FS\n`;
     y += nameLines * nameLineH + nameToVariantGap;
     if (variantLine) {
@@ -150,7 +150,7 @@ export function generateVoucherZPL(voucher: {
     const isEan13 = /^\d{13}$/.test(voucher.code);
     const eanWidth = 190;
     const barcodeX = Math.round((labelWidthDots - eanWidth) / 2);
-    let z = `^XA^CI28`;
+    let z = `^XA^CI28^PW${labelWidthDots}^LL${labelHeightDots}`;
     z += `^CF0,24^FO0,12^FB${labelWidthDots},1,0,C^FD${voucher.code}^FS`;
     if (isEan13) {
       z += `^FO${barcodeX},46^BEN,90,N,N^FD${voucher.code}^FS`;
@@ -171,7 +171,7 @@ export function generateVoucherZPL(voucher: {
   }
 
   let y = 10;
-  let z = `^XA^CI28`;
+  let z = `^XA^CI28^PW${labelWidthDots}^LL${labelHeightDots}`;
   z += `^CF0,30^FO${marginLeft},${y}^FB${contentWidth},1,0,C^FD${amountStr}^FS`;
   y += 34;
   if (expiryStr) {

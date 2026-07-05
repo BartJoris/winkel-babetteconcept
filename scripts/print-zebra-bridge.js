@@ -47,7 +47,7 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    const proc = spawn('lpr', ['-P', PRINTER, '-o', 'raw'], {
+    const proc = spawn('/usr/bin/lpr', ['-P', PRINTER, '-o', 'raw'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     proc.stdin.write(zpl, 'utf8');

@@ -51,7 +51,7 @@ function freshDayData(): DayData {
 
 async function loadDayData(): Promise<DayData> {
   try {
-    const res = await fetch('/api/foodtruck/data');
+    const res = await fetch(`/api/foodtruck/data?date=${getTodayStr()}`);
     if (res.ok) {
       const data: DayData = await res.json();
       if (data.date === getTodayStr()) {
@@ -387,8 +387,14 @@ export default function FoodtruckPage() {
               </div>
             )}
 
-            {/* Reset knop */}
-            <div className="text-center">
+            {/* Acties */}
+            <div className="flex items-center justify-center gap-4">
+              <a
+                href="/foodtruck-omzet"
+                className="px-6 py-3 bg-blue-100 text-blue-700 font-medium rounded-xl active:bg-blue-200"
+              >
+                Omzet per dag
+              </a>
               <button
                 onClick={() => {
                   if (window.confirm('Weet je zeker dat je alle data van vandaag wilt wissen?')) {

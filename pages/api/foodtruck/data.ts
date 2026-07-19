@@ -3,12 +3,19 @@ import { Redis } from '@upstash/redis';
 
 const redis = Redis.fromEnv();
 
-const REDIS_KEY = 'foodtruck-day';
+function keyForDate(date: string): string {
+  return `foodtruck-day:${date}`;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const date = (req.query.date as string) || '';
+
   if (req.method === 'GET') {
-    const data = await redis.get(REDIS_KEY);
-    return res.status(200).json(data || { date: '', orders: [], totalCash: 0, totalPayconiq: 0 });
+    if (!date) {
+      return res.status(400).json({ error: 'Missing date parameter' });
+    }
+    const data = await redis.get(keyForDate(date));
+    return res.status(200).json(data || { date, orders: [], totalCash: 0, totalPayconiq: 0 });
   }
 
   if (req.method === 'POST') {
@@ -16,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!body || !body.date) {
       return res.status(400).json({ error: 'Invalid data' });
     }
-    await redis.set(REDIS_KEY, body);
+    await redis.set(keyForDate(body.date), body);
     return res.status(200).json({ ok: true });
   }
 

@@ -3,7 +3,7 @@ import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
 import Navigation from "../components/Navigation";
 
-const PAGES_WITHOUT_NAV = ['/foodtruck'];
+const PAGES_WITHOUT_NAV = ['/foodtruck', '/foodtruck-omzet'];
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();

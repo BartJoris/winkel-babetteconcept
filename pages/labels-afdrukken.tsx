@@ -344,7 +344,20 @@ export default function LabelsAfdrukkenPage() {
         );
 
         const successCount = json.results.filter((r: any) => r.success).length;
-        alert(`${json.message || `${successCount} van ${scannedProducts.length} producten aangepast`}`);
+        const message = json.message || `${successCount} van ${scannedProducts.length} producten aangepast`;
+
+        if (successCount > 0) {
+          const wantPrint = confirm(
+            `${message}\n\nWil je de labels nu afdrukken?`
+          );
+          setAdjustingStock(false);
+          if (wantPrint) {
+            await handlePrintLabels();
+          }
+          return;
+        }
+
+        alert(message);
       } else {
         alert(`Fout: ${json.error || 'Kon voorraad niet aanpassen'}`);
         setScannedProducts((prev) =>
@@ -533,7 +546,7 @@ export default function LabelsAfdrukkenPage() {
                       : 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
                   }`}
                 >
-                  🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (62×29mm)'}
+                  🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (25×54mm)'}
                 </button>
                 {printer === 'zebra' && (
                   <>
@@ -886,7 +899,7 @@ export default function LabelsAfdrukkenPage() {
                 💡 {labelFormat === 'small'
                   ? 'Klein formaat (25×25mm): alleen prijs en variant/maatreeks. '
                   : ''}
-                Labels: {printer === 'zebra' ? 'Zebra (51×25mm)' : 'Dymo (62×29mm)'}.
+                Labels: {printer === 'zebra' ? 'Zebra (51×25mm)' : 'Dymo (25×54mm)'}.
                 {printer === 'zebra' && labelFormat === 'normal'
                   ? ' Zebra 51×25 mm. Direct naar printer: start in een terminal "npm run print-zebra", daarna gaat "Labels afdrukken" direct naar de Zebra (zoals echo | lpr -o raw). Zonder bridge opent het browser-printvenster.'
                   : ` Selecteer je ${printer === 'zebra' ? 'Zebra' : 'Dymo'} printer in het printvenster.`}

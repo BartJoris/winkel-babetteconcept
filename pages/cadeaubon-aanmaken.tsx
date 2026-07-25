@@ -183,7 +183,7 @@ export default function CadeaubonAanmakenPage() {
                     : 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
                 }`}
               >
-                🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (62×29mm)'}
+                🖨️ {printer === 'zebra' ? 'Zebra ZD421d (51×25mm)' : 'Dymo (25×54mm)'}
               </button>
             </div>
           </div>

@@ -4,6 +4,22 @@ import { useAuth } from '@/lib/hooks/useAuth';
 const formatEuro = (amount: number) =>
   amount.toLocaleString('nl-BE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
 
+type ReassignStep = 'confirm-clear' | 'search' | 'pick-variant';
+
+interface BarcodeReassignState {
+  step: ReassignStep;
+  barcode: string;
+  /** Set when barcode was taken from an archived product; null when assigning a free barcode */
+  archivedProduct: { id: number; name: string; barcode?: string | null } | null;
+  searchQuery: string;
+  searchResults: any[];
+  variants: any[];
+  productName: string;
+  searching: boolean;
+  loadingVariants: boolean;
+  working: boolean;
+}
+
 export default function VoorraadOpzoekenPage() {
   const { isLoading } = useAuth();
   const [barcode, setBarcode] = useState('');
@@ -14,7 +30,9 @@ export default function VoorraadOpzoekenPage() {
   const [sortBy, setSortBy] = useState<'name' | 'stock' | 'price'>('name');
   const [imageMap, setImageMap] = useState<Record<number, string | null>>({});
   const [imagesLoading, setImagesLoading] = useState(false);
+  const [barcodeReassign, setBarcodeReassign] = useState<BarcodeReassignState | null>(null);
   const imageRequestRef = useRef(0);
+  const reassignSearchRef = useRef<HTMLInputElement>(null);
 
   const loadImages = useCallback(async (productIds: number[]) => {
     if (productIds.length === 0) return;
@@ -64,24 +82,63 @@ export default function VoorraadOpzoekenPage() {
       });
       
       const json = await res.json();
-      
-      if (json.success) {
-        if (json.isGiftCard && json.giftCard) {
-          setSearchResults([]);
-          setProductData({ isGiftCard: true, giftCard: json.giftCard });
-        } else if (json.isSearchResults) {
-          setSearchResults(json.searchResults);
-          setProductData(null);
-          loadImages(json.searchResults.map((p: any) => p.id));
-        } else {
-          setProductData(json);
-          setSearchResults([]);
-          if (json.variants?.length > 0) {
-            loadImages(json.variants.map((v: any) => v.id));
-          }
+
+      // Check archived conflict first (barcode only on inactive product)
+      if (json.archivedConflict || json.archivedProduct) {
+        setBarcodeReassign({
+          step: 'confirm-clear',
+          barcode: json.barcode || barcode.trim(),
+          archivedProduct: json.archivedProduct || {
+            id: 0,
+            name: 'onbekend product',
+          },
+          searchQuery: '',
+          searchResults: [],
+          variants: [],
+          productName: '',
+          searching: false,
+          loadingVariants: false,
+          working: false,
+        });
+        setBarcode('');
+        return;
+      }
+
+      if (json.isGiftCard && json.giftCard) {
+        setSearchResults([]);
+        setProductData({ isGiftCard: true, giftCard: json.giftCard });
+      } else if (json.isSearchResults) {
+        setSearchResults(json.searchResults);
+        setProductData(null);
+        loadImages(json.searchResults.map((p: any) => p.id));
+      } else if (json.success) {
+        setProductData(json);
+        setSearchResults([]);
+        if (json.variants?.length > 0) {
+          loadImages(json.variants.map((v: any) => v.id));
         }
       } else {
-        alert(`Product niet gevonden: ${json.error || 'Onbekende fout'}`);
+        const code = barcode.trim();
+        const wantAssign = confirm(
+          `Product niet gevonden: ${json.error || 'Onbekende fout'}\n\n` +
+            `Wil je barcode "${code}" toewijzen aan een bestaand product?`
+        );
+        if (wantAssign) {
+          setBarcodeReassign({
+            step: 'search',
+            barcode: code,
+            archivedProduct: null,
+            searchQuery: '',
+            searchResults: [],
+            variants: [],
+            productName: '',
+            searching: false,
+            loadingVariants: false,
+            working: false,
+          });
+          setBarcode('');
+          setTimeout(() => reassignSearchRef.current?.focus(), 100);
+        }
       }
     } catch (err) {
       console.error('Error scanning product:', err);
@@ -122,6 +179,223 @@ export default function VoorraadOpzoekenPage() {
     }
   };
 
+  const closeBarcodeReassign = () => {
+    setBarcodeReassign(null);
+  };
+
+  const handleClearArchivedBarcode = async () => {
+    if (!barcodeReassign || barcodeReassign.working) return;
+    if (!barcodeReassign.archivedProduct?.id) {
+      alert('Gearchiveerd product ontbreekt');
+      return;
+    }
+
+    setBarcodeReassign((prev) => (prev ? { ...prev, working: true } : prev));
+    try {
+      const res = await fetch('/api/reassign-barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'clear',
+          barcode: barcodeReassign.barcode,
+          archivedProductId: barcodeReassign.archivedProduct.id,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        alert(`Fout: ${json.error || 'Kon barcode niet leegmaken'}`);
+        setBarcodeReassign((prev) => (prev ? { ...prev, working: false } : prev));
+        return;
+      }
+
+      setBarcodeReassign((prev) =>
+        prev
+          ? {
+              ...prev,
+              step: 'search',
+              working: false,
+              searchQuery: '',
+              searchResults: [],
+              variants: [],
+            }
+          : prev
+      );
+      setTimeout(() => reassignSearchRef.current?.focus(), 100);
+    } catch (err) {
+      console.error('Error clearing archived barcode:', err);
+      alert('Fout bij leegmaken van barcode');
+      setBarcodeReassign((prev) => (prev ? { ...prev, working: false } : prev));
+    }
+  };
+
+  const handleReassignSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!barcodeReassign) return;
+    const trimmed = barcodeReassign.searchQuery.trim();
+    if (!trimmed) return;
+
+    setBarcodeReassign((prev) =>
+      prev ? { ...prev, searching: true, searchResults: [], variants: [], step: 'search' } : prev
+    );
+    try {
+      const res = await fetch('/api/scan-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: trimmed }),
+      });
+      const json = await res.json();
+
+      if (json.archivedConflict) {
+        alert('Die barcode zit nog op een gearchiveerd product. Zoek op productnaam.');
+        setBarcodeReassign((prev) => (prev ? { ...prev, searching: false } : prev));
+        return;
+      }
+
+      if (json.success && json.isSearchResults) {
+        setBarcodeReassign((prev) =>
+          prev
+            ? {
+                ...prev,
+                searching: false,
+                step: 'search',
+                searchResults: json.searchResults,
+                variants: [],
+              }
+            : prev
+        );
+        return;
+      }
+
+      if (json.success && json.variants?.length) {
+        // Exact/single product hit: go straight to variant pick
+        setBarcodeReassign((prev) =>
+          prev
+            ? {
+                ...prev,
+                searching: false,
+                step: 'pick-variant',
+                searchResults: [],
+                variants: json.variants,
+                productName: json.productName || '',
+              }
+            : prev
+        );
+        return;
+      }
+
+      setBarcodeReassign((prev) => (prev ? { ...prev, searching: false, searchResults: [] } : prev));
+      alert(`Geen actief product gevonden: ${json.error || 'Onbekende fout'}`);
+    } catch (err) {
+      console.error('Error searching reassign target:', err);
+      alert('Fout bij zoeken van product');
+      setBarcodeReassign((prev) => (prev ? { ...prev, searching: false } : prev));
+    }
+  };
+
+  const handleReassignPickProduct = async (productId: number) => {
+    if (!barcodeReassign) return;
+    setBarcodeReassign((prev) => (prev ? { ...prev, loadingVariants: true } : prev));
+    try {
+      const res = await fetch('/api/scan-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId }),
+      });
+      const json = await res.json();
+      if (!json.success || !json.variants?.length) {
+        alert(`Kon varianten niet laden: ${json.error || 'Onbekende fout'}`);
+        setBarcodeReassign((prev) => (prev ? { ...prev, loadingVariants: false } : prev));
+        return;
+      }
+      setBarcodeReassign((prev) =>
+        prev
+          ? {
+              ...prev,
+              loadingVariants: false,
+              step: 'pick-variant',
+              variants: json.variants,
+              productName: json.productName || '',
+            }
+          : prev
+      );
+    } catch (err) {
+      console.error('Error loading variants for reassign:', err);
+      alert('Fout bij laden van varianten');
+      setBarcodeReassign((prev) => (prev ? { ...prev, loadingVariants: false } : prev));
+    }
+  };
+
+  const handleAssignBarcodeToVariant = async (
+    variantId: number,
+    variantLabel: string,
+    existingBarcode?: string | null
+  ) => {
+    if (!barcodeReassign || barcodeReassign.working) return;
+
+    const currentBarcode =
+      typeof existingBarcode === 'string' && existingBarcode.trim() ? existingBarcode.trim() : '';
+    let replaceExisting = false;
+
+    if (currentBarcode && currentBarcode !== barcodeReassign.barcode) {
+      const replace = confirm(
+        `Deze variant heeft al barcode "${currentBarcode}".\n\n` +
+          `Wil je het huidige barcode vervangen met de gescande barcode "${barcodeReassign.barcode}"?`
+      );
+      if (!replace) return;
+      replaceExisting = true;
+    } else if (
+      !confirm(`Barcode ${barcodeReassign.barcode} toewijzen aan:\n"${variantLabel}"?`)
+    ) {
+      return;
+    }
+
+    setBarcodeReassign((prev) => (prev ? { ...prev, working: true } : prev));
+    try {
+      const assignOnce = async (replace: boolean) => {
+        const res = await fetch('/api/reassign-barcode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'assign',
+            barcode: barcodeReassign.barcode,
+            targetProductId: variantId,
+            replaceExisting: replace,
+          }),
+        });
+        const json = await res.json();
+        return { res, json };
+      };
+
+      let { res, json } = await assignOnce(replaceExisting);
+
+      // Server may still detect an existing barcode we didn't know about
+      if (!res.ok && json.needsReplace && json.existingBarcode) {
+        const replace = confirm(
+          `Deze variant heeft al barcode "${json.existingBarcode}".\n\n` +
+            `Wil je het huidige barcode vervangen met de gescande barcode "${barcodeReassign.barcode}"?`
+        );
+        if (!replace) {
+          setBarcodeReassign((prev) => (prev ? { ...prev, working: false } : prev));
+          return;
+        }
+        ({ res, json } = await assignOnce(true));
+      }
+
+      if (!res.ok || !json.success) {
+        alert(`Fout: ${json.error || 'Kon barcode niet toewijzen'}`);
+        setBarcodeReassign((prev) => (prev ? { ...prev, working: false } : prev));
+        return;
+      }
+
+      closeBarcodeReassign();
+      await handleSelectProduct(variantId);
+    } catch (err) {
+      console.error('Error assigning barcode:', err);
+      alert('Fout bij toewijzen van barcode');
+      setBarcodeReassign((prev) => (prev ? { ...prev, working: false } : prev));
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -146,6 +420,248 @@ export default function VoorraadOpzoekenPage() {
               Scan barcode of zoek product om voorraad van alle varianten te controleren
             </p>
           </div>
+
+          {/* Barcode reassign modal */}
+          {barcodeReassign && (
+            <div
+              className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-[8vh] px-4"
+              onClick={() => {
+                if (!barcodeReassign.working && !barcodeReassign.loadingVariants) {
+                  closeBarcodeReassign();
+                }
+              }}
+            >
+              <div
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      {barcodeReassign.archivedProduct
+                        ? 'Barcode zit op gearchiveerd product'
+                        : 'Barcode toewijzen aan product'}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      Barcode{' '}
+                      <span className="font-mono font-semibold text-gray-700">
+                        {barcodeReassign.barcode}
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeBarcodeReassign}
+                    disabled={barcodeReassign.working}
+                    className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {barcodeReassign.archivedProduct ? (
+                  <div className="px-6 py-3 bg-amber-50 border-b border-amber-100 text-sm text-amber-900">
+                    Gearchiveerd:{' '}
+                    <span className="font-semibold">{barcodeReassign.archivedProduct.name}</span>
+                  </div>
+                ) : (
+                  <div className="px-6 py-3 bg-sky-50 border-b border-sky-100 text-sm text-sky-900">
+                    Geen product met deze barcode gevonden. Zoek het juiste product en kies de
+                    variant.
+                  </div>
+                )}
+
+                {barcodeReassign.step === 'confirm-clear' && (
+                  <div className="px-6 py-6 space-y-4">
+                    <p className="text-gray-700">
+                      Wil je de barcode leegmaken bij dit gearchiveerde product? Daarna kun je hem
+                      toewijzen aan de juiste actieve variant.
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        type="button"
+                        onClick={closeBarcodeReassign}
+                        disabled={barcodeReassign.working}
+                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Annuleren
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearArchivedBarcode}
+                        disabled={barcodeReassign.working}
+                        className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold disabled:opacity-50"
+                      >
+                        {barcodeReassign.working ? 'Bezig...' : 'Ja, barcode leegmaken'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {barcodeReassign.step === 'search' && (
+                  <>
+                    <form
+                      onSubmit={handleReassignSearch}
+                      className="px-6 py-4 border-b border-gray-100 flex gap-3"
+                    >
+                      <input
+                        ref={reassignSearchRef}
+                        type="text"
+                        value={barcodeReassign.searchQuery}
+                        onChange={(e) =>
+                          setBarcodeReassign((prev) =>
+                            prev ? { ...prev, searchQuery: e.target.value } : prev
+                          )
+                        }
+                        placeholder="Zoek actief product op naam..."
+                        className="flex-1 px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        disabled={barcodeReassign.searching || barcodeReassign.loadingVariants}
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          barcodeReassign.searching ||
+                          barcodeReassign.loadingVariants ||
+                          !barcodeReassign.searchQuery.trim()
+                        }
+                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold disabled:opacity-50"
+                      >
+                        {barcodeReassign.searching ? 'Zoeken...' : 'Zoeken'}
+                      </button>
+                    </form>
+                    <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
+                      {barcodeReassign.loadingVariants && (
+                        <div className="px-6 py-8 text-center text-gray-500">
+                          Varianten laden...
+                        </div>
+                      )}
+                      {!barcodeReassign.loadingVariants &&
+                        barcodeReassign.searchResults.length === 0 && (
+                          <div className="px-6 py-8 text-center text-gray-500 text-sm">
+                            Zoek het juiste product. Klik daarna op een resultaat om de variant te
+                            kiezen.
+                          </div>
+                        )}
+                      {!barcodeReassign.loadingVariants &&
+                        barcodeReassign.searchResults.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handleReassignPickProduct(p.id)}
+                            className="w-full text-left px-6 py-3 hover:bg-blue-50 transition-colors"
+                          >
+                            <div className="font-medium text-gray-900 text-sm">{p.name}</div>
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              {p.attributes && (
+                                <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                  {p.attributes}
+                                </span>
+                              )}
+                              <span className="text-xs text-gray-500">
+                                Voorraad: {p.qty_available} · {formatEuro(p.list_price)}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  </>
+                )}
+
+                {barcodeReassign.step === 'pick-variant' && (
+                  <>
+                    <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          Kies de juiste variant
+                        </p>
+                        {barcodeReassign.productName && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {barcodeReassign.productName}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBarcodeReassign((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  step: 'search',
+                                  variants: [],
+                                  productName: '',
+                                }
+                              : prev
+                          )
+                        }
+                        disabled={barcodeReassign.working}
+                        className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                      >
+                        Terug naar zoeken
+                      </button>
+                    </div>
+                    <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
+                      {barcodeReassign.working && (
+                        <div className="px-6 py-8 text-center text-gray-500">
+                          Barcode toewijzen...
+                        </div>
+                      )}
+                      {!barcodeReassign.working &&
+                        barcodeReassign.variants.map((v) => {
+                          const label = [
+                            barcodeReassign.productName || v.name,
+                            v.attributes,
+                          ]
+                            .filter(Boolean)
+                            .join(' — ');
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => handleAssignBarcodeToVariant(v.id, label, v.barcode)}
+                              className="w-full text-left px-6 py-3 hover:bg-green-50 transition-colors flex items-center gap-4"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-900 text-sm truncate">
+                                  {v.name || barcodeReassign.productName}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {v.attributes && (
+                                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                      {v.attributes}
+                                    </span>
+                                  )}
+                                  {v.barcode && (
+                                    <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                      {v.barcode}
+                                    </span>
+                                  )}
+                                  <span
+                                    className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                      v.qty_available > 0
+                                        ? 'text-green-700 bg-green-100'
+                                        : 'text-orange-700 bg-orange-100'
+                                    }`}
+                                  >
+                                    Voorraad: {v.qty_available}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded shrink-0">
+                                Toewijzen
+                              </span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Product Scanner Section */}
           <div className="bg-white shadow-xl rounded-2xl p-6 mb-6">

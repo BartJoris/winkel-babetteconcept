@@ -130,6 +130,33 @@ async function findLoyaltyCardByCode(
   return null;
 }
 
+/** Zoek gearchiveerd product met exacte barcode (active_test uit). */
+async function findArchivedProductByBarcode(
+  uid: number,
+  password: string,
+  barcode: string
+): Promise<{ id: number; name: string; barcode: string | false; qty_available: number } | null> {
+  const trimmed = barcode.trim();
+  if (!trimmed) return null;
+
+  const products = await odooCall<any[]>({
+    uid,
+    password,
+    model: 'product.product',
+    method: 'search_read',
+    args: [[['barcode', '=', trimmed]]],
+    kwargs: {
+      fields: ['id', 'name', 'barcode', 'qty_available', 'active'],
+      limit: 5,
+      context: { active_test: false },
+    },
+  });
+
+  // Odoo may return active as false/0; treat any non-true as archived/inactive
+  const archived = products.find((p) => p.active !== true);
+  return archived ?? null;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -181,6 +208,24 @@ export default async function handler(
               points: giftCard.points,
               balance: giftCard.points,
               expiration_date: giftCard.expiration_date ?? undefined,
+            },
+          });
+        }
+
+        // Barcode may still sit on an archived product — surface for reassignment
+        const archived = await findArchivedProductByBarcode(uid, password, barcode);
+        if (archived) {
+          console.log('⚠️ Barcode found on archived product:', archived.id, archived.name);
+          // success:true so clients that only check !success don't show a false "not found" alert
+          return res.status(200).json({
+            success: true,
+            archivedConflict: true,
+            barcode: barcode.trim(),
+            archivedProduct: {
+              id: archived.id,
+              name: archived.name,
+              barcode: archived.barcode || barcode.trim(),
+              qty_available: archived.qty_available ?? 0,
             },
           });
         }
@@ -393,10 +438,42 @@ export default async function handler(
       },
     });
 
-    // If not found by barcode, search by name
+    // If not found by barcode, check archived then search by name
     if (products.length === 0) {
+      const giftCardEarly = await findLoyaltyCardByCode(uid, password, barcode);
+      if (giftCardEarly) {
+        return res.status(200).json({
+          success: true,
+          isGiftCard: true,
+          giftCard: {
+            id: giftCardEarly.id,
+            code: giftCardEarly.code,
+            points: giftCardEarly.points,
+            balance: giftCardEarly.points,
+            expiration_date: giftCardEarly.expiration_date ?? undefined,
+          },
+        });
+      }
+
+      const archived = await findArchivedProductByBarcode(uid, password, barcode);
+      if (archived) {
+        console.log('⚠️ Barcode found on archived product:', archived.id, archived.name);
+        // success:true so clients that only check !success don't show a false "not found" alert
+        return res.status(200).json({
+          success: true,
+          archivedConflict: true,
+          barcode: String(barcode).trim(),
+          archivedProduct: {
+            id: archived.id,
+            name: archived.name,
+            barcode: archived.barcode || String(barcode).trim(),
+            qty_available: archived.qty_available ?? 0,
+          },
+        });
+      }
+
       console.log('No product found with barcode, trying name search...');
-      
+
       // Search in both variant name and barcode for better results (exclude archived)
       products = await odooCall<any[]>({
         uid,
@@ -417,20 +494,6 @@ export default async function handler(
       });
 
       if (products.length === 0) {
-        const giftCard = await findLoyaltyCardByCode(uid, password, barcode);
-        if (giftCard) {
-          return res.status(200).json({
-            success: true,
-            isGiftCard: true,
-            giftCard: {
-              id: giftCard.id,
-              code: giftCard.code,
-              points: giftCard.points,
-              balance: giftCard.points,
-              expiration_date: giftCard.expiration_date ?? undefined,
-            },
-          });
-        }
         console.log('❌ No product found with name containing:', barcode);
         return res.status(404).json({ 
           success: false,

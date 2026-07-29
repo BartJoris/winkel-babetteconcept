@@ -67,10 +67,10 @@ const nextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
           },
-          // Cache static assets for 1 year
+          // HTML/pages: always revalidate so clients pick up new JS bundles
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: 'private, no-cache, no-store, must-revalidate',
           },
         ],
       },

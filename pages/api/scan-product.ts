@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
+import { ODOO_VARIANT_PRICE_FIELDS, variantListPrice } from '@/lib/odoo-product-price';
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
 const ODOO_DB = process.env.ODOO_DB || 'babetteconcept';
@@ -177,7 +178,7 @@ export default async function handler(
 
     console.log('🔍 Product Scan Request - Barcode:', barcode, 'Product ID:', productId, 'Light:', !!light);
 
-    const productFields = ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price'];
+    const productFields = ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', ...ODOO_VARIANT_PRICE_FIELDS];
 
     // Light mode: fast scan returning only the scanned product (no images, no variants)
     if (light && barcode) {
@@ -286,7 +287,7 @@ export default async function handler(
                 name: p.name,
                 barcode: p.barcode,
                 qty_available: p.qty_available,
-                list_price: p.list_price,
+                list_price: variantListPrice(p),
                 attributes: attributes || null,
                 productTmplId: tmplId,
               };
@@ -376,7 +377,7 @@ export default async function handler(
           name: p.name,
           barcode: p.barcode,
           qty_available: p.qty_available,
-          list_price: p.list_price,
+          list_price: variantListPrice(p),
           image: null,
           isScanned: true,
           attributes: attributes || null,
@@ -487,7 +488,7 @@ export default async function handler(
           ['active', '=', true]
         ]],
         kwargs: {
-          fields: ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', 'list_price', 'product_template_attribute_value_ids'],
+          fields: ['id', 'name', 'barcode', 'product_tmpl_id', 'qty_available', ...ODOO_VARIANT_PRICE_FIELDS, 'product_template_attribute_value_ids'],
           limit: 50,
           order: 'name asc',
         },
@@ -532,7 +533,7 @@ export default async function handler(
               name: p.name,
               barcode: p.barcode,
               qty_available: p.qty_available,
-              list_price: p.list_price,
+              list_price: variantListPrice(p),
               attributes: attributes || null,
               productTmplId: tmplId,
             };
@@ -570,7 +571,7 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
         name: scannedProduct.name,
         barcode: scannedProduct.barcode,
         qty_available: scannedProduct.qty_available,
-        list_price: scannedProduct.list_price,
+        list_price: variantListPrice(scannedProduct),
       },
       variants: [],
       totalVariants: 1,
@@ -606,7 +607,7 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
           'display_name',
           'barcode',
           'qty_available',
-          'list_price',
+          ...ODOO_VARIANT_PRICE_FIELDS,
           'product_template_attribute_value_ids',
         ],
         order: 'name asc',
@@ -639,7 +640,7 @@ async function getVariantsResponse(uid: number, password: string, scannedProduct
       name: variant.display_name || variant.name,
       barcode: variant.barcode || null,
       qty_available: variant.qty_available,
-      list_price: variant.list_price,
+      list_price: variantListPrice(variant),
       isScanned: variant.id === scannedProduct.id,
       attributes: attributeNames || null,
     };

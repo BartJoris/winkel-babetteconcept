@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
+import { ODOO_VARIANT_PRICE_FIELDS, variantListPrice } from '@/lib/odoo-product-price';
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
 const ODOO_DB = process.env.ODOO_DB || 'babetteconcept';
@@ -125,7 +126,7 @@ async function readTargetProduct(
         'id',
         'name',
         'barcode',
-        'list_price',
+        ...ODOO_VARIANT_PRICE_FIELDS,
         'qty_available',
         'product_tmpl_id',
         'product_template_attribute_value_ids',
@@ -206,7 +207,7 @@ async function buildProductResponse(
     id: target.id,
     name: target.name,
     barcode: trimmedBarcode,
-    list_price: target.list_price,
+    list_price: variantListPrice(target),
     qty_available: target.qty_available,
     attributes,
     sizeRange,

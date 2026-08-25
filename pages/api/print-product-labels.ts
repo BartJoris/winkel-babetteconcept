@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
 import { generateZPL as generateZPLFromLib, abbreviateRange } from '@/lib/zpl-labels';
+import { ODOO_VARIANT_PRICE_FIELDS, variantListPrice } from '@/lib/odoo-product-price';
 const bwipjs = require('bwip-js');
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
@@ -326,7 +327,7 @@ export default async function handler(
       method: 'search_read',
       args: [[['id', 'in', productIds]]],
       kwargs: {
-        fields: ['id', 'name', 'barcode', 'list_price', 'product_template_attribute_value_ids'],
+        fields: ['id', 'name', 'barcode', ...ODOO_VARIANT_PRICE_FIELDS, 'product_template_attribute_value_ids'],
       },
     });
 
@@ -374,7 +375,7 @@ export default async function handler(
         id: p.id,
         name: ov?.name || p.name,
         barcode: p.barcode || null,
-        list_price: p.list_price || 0,
+        list_price: variantListPrice(p),
         attributes: (ov?.attributes ?? attributes) || null,
         sizeRange: ov?.sizeRange || null,
       });

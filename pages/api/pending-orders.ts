@@ -1,33 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
+import { loadPendingOrders } from '@/lib/pendingOrders';
 
 const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
 const ODOO_DB = process.env.ODOO_DB || 'babetteconcept';
-
-type PendingOrder = {
-  id: number;
-  name: string;
-  date_order: string;
-  amount_total: number;
-  partner_id: [number, string] | false;
-  partner_name: string;
-  partner_email: string | null;
-  partner_phone: string | null;
-  partner_street: string | null;
-  partner_city: string | null;
-  partner_zip: string | null;
-  partner_country: string | null;
-  state: string;
-  website_id: [number, string] | false;
-  picking_state: string | null;
-  order_line: Array<{
-    product_id: [number, string];
-    product_uom_qty: number;
-    price_unit: number;
-    price_total: number;
-  }>;
-};
 
 async function odooCall<T>(params: {
   uid: number;
@@ -63,7 +40,7 @@ async function odooCall<T>(params: {
   });
 
   const json = await res.json();
-  
+
   if (json.error) {
     throw new Error(json.error.message || 'Odoo API error');
   }
@@ -87,130 +64,12 @@ export default async function handler(
     }
 
     const { uid, password } = session.user;
-
-    // Fetch recent e-commerce orders (sent, sale, done - no drafts or cancelled)
-    // Shows last 10 orders so you can easily download documents
-    const orders = await odooCall<any[]>({
-      uid,
-      password,
-      model: 'sale.order',
-      method: 'search_read',
-      args: [
-        [
-          ['state', 'in', ['sent', 'sale', 'done']], // Exclude draft and cancel
-          ['website_id', '!=', false], // Only e-commerce orders
-        ],
-      ],
-      kwargs: {
-        fields: [
-          'id',
-          'name',
-          'date_order',
-          'amount_total',
-          'partner_id',
-          'state',
-          'website_id',
-        ],
-        order: 'date_order desc',
-        limit: 10, // Last 10 orders
-      },
-    });
-
-    const orderIds = orders.map((o: any) => o.id);
-    const partnerIds = [...new Set(
-      orders
-        .map((o: any) => o.partner_id && typeof o.partner_id !== 'boolean' ? o.partner_id[0] : null)
-        .filter((id: number | null): id is number => id !== null)
-    )];
-
-    const [allPartners, allOrderLines, allPickings] = await Promise.all([
-      partnerIds.length > 0
-        ? odooCall<any[]>({
-            uid,
-            password,
-            model: 'res.partner',
-            method: 'search_read',
-            args: [[['id', 'in', partnerIds]]],
-            kwargs: {
-              fields: ['name', 'email', 'phone', 'street', 'city', 'zip', 'country_id'],
-            },
-          })
-        : Promise.resolve([]),
-
-      odooCall<any[]>({
-        uid,
-        password,
-        model: 'sale.order.line',
-        method: 'search_read',
-        args: [[['order_id', 'in', orderIds]]],
-        kwargs: {
-          fields: ['order_id', 'product_id', 'product_uom_qty', 'price_unit', 'price_total'],
-        },
-      }),
-
-      odooCall<any[]>({
-        uid,
-        password,
-        model: 'stock.picking',
-        method: 'search_read',
-        args: [[['sale_id', 'in', orderIds]]],
-        kwargs: {
-          fields: ['sale_id', 'state'],
-        },
-      }).catch(() => [] as any[]),
-    ]);
-
-    const partnerMap = new Map(allPartners.map((p: any) => [p.id, p]));
-    const orderLinesMap = new Map<number, any[]>();
-    for (const line of allOrderLines) {
-      const oid = line.order_id[0];
-      if (!orderLinesMap.has(oid)) orderLinesMap.set(oid, []);
-      orderLinesMap.get(oid)!.push(line);
-    }
-    const pickingMap = new Map<number, string>();
-    for (const picking of allPickings) {
-      const sid = picking.sale_id[0];
-      if (!pickingMap.has(sid)) pickingMap.set(sid, picking.state);
-    }
-
-    const enrichedOrders: PendingOrder[] = orders.map((order: any) => {
-      const partnerId = order.partner_id && typeof order.partner_id !== 'boolean' ? order.partner_id[0] : null;
-      const partnerDetails = partnerId ? partnerMap.get(partnerId) || {} : {};
-      const orderLines = orderLinesMap.get(order.id) || [];
-
-      return {
-        id: order.id,
-        name: order.name,
-        date_order: order.date_order,
-        amount_total: order.amount_total,
-        partner_id: order.partner_id,
-        partner_name: partnerDetails.name || 'Onbekend',
-        partner_email: partnerDetails.email || null,
-        partner_phone: partnerDetails.phone || null,
-        partner_street: partnerDetails.street || null,
-        partner_city: partnerDetails.city || null,
-        partner_zip: partnerDetails.zip || null,
-        partner_country: partnerDetails.country_id && typeof partnerDetails.country_id !== 'boolean'
-          ? partnerDetails.country_id[1]
-          : null,
-        state: order.state,
-        website_id: order.website_id,
-        picking_state: pickingMap.get(order.id) || null,
-        order_line: orderLines.map((line: any) => ({
-          product_id: line.product_id,
-          product_uom_qty: line.product_uom_qty,
-          price_unit: line.price_unit,
-          price_total: line.price_total,
-        })),
-      };
-    });
-
-    return res.status(200).json({ orders: enrichedOrders });
+    const orders = await loadPendingOrders(odooCall, uid, password);
+    return res.status(200).json({ orders });
   } catch (error) {
     console.error('Error fetching pending orders:', error);
-    return res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to fetch pending orders' 
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to fetch pending orders',
     });
   }
 }
-

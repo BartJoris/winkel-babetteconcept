@@ -1,5 +1,8 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
+
+const formatEuro = (amount: number) =>
+  amount.toLocaleString('nl-BE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
 
 interface AdjustmentItem {
   productId: number;
@@ -22,6 +25,49 @@ interface SearchResult {
   attributes: string | null;
 }
 
+interface RecentPosOrder {
+  id: number;
+  name: string;
+  date: string;
+  state: string;
+  partner: string | null;
+  total: number;
+  lineCount: number;
+  sessionName: string | null;
+}
+
+function posOrderStateLabel(state: string): string {
+  switch (state) {
+    case 'draft':
+      return 'Concept';
+    case 'paid':
+      return 'Betaald';
+    case 'done':
+      return 'Voltooid';
+    case 'invoiced':
+      return 'Gefactureerd';
+    case 'cancel':
+      return 'Geannuleerd';
+    default:
+      return state;
+  }
+}
+
+function posOrderStateClass(state: string): string {
+  switch (state) {
+    case 'cancel':
+      return 'bg-red-100 text-red-700';
+    case 'done':
+    case 'paid':
+    case 'invoiced':
+      return 'bg-green-100 text-green-700';
+    case 'draft':
+      return 'bg-amber-100 text-amber-800';
+    default:
+      return 'bg-gray-100 text-gray-700';
+  }
+}
+
 export default function VoorraadAanpassenPage() {
   const { isLoading } = useAuth();
   const [barcode, setBarcode] = useState('');
@@ -36,6 +82,11 @@ export default function VoorraadAanpassenPage() {
   const [orderInput, setOrderInput] = useState('');
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderInfo, setOrderInfo] = useState<{ name: string; date: string; state: string; partner: string | null; total: number } | null>(null);
+  const [recentOrders, setRecentOrders] = useState<RecentPosOrder[]>([]);
+  const [recentSessionLabel, setRecentSessionLabel] = useState<string | null>(null);
+  const [usingYesterdaySession, setUsingYesterdaySession] = useState(false);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState<string | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -114,18 +165,33 @@ export default function VoorraadAanpassenPage() {
     });
   }, []);
 
-  const handleOrderImport = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!orderInput.trim()) return;
-
-    const raw = orderInput.trim();
-    const match = raw.match(/(\d+)\s*$/);
-    if (!match) {
-      showToast('Voer een geldig order ID of URL in', 'error');
-      return;
+  const loadRecentOrders = useCallback(async () => {
+    setRecentLoading(true);
+    setRecentError(null);
+    try {
+      const res = await fetch('/api/recent-pos-orders');
+      const json = await res.json();
+      if (!res.ok || json.success === false) {
+        setRecentError(json.error || 'Kon recente orders niet ophalen');
+        setRecentOrders([]);
+        return;
+      }
+      setRecentOrders(json.orders || []);
+      setRecentSessionLabel(json.sessionLabel ?? null);
+      setUsingYesterdaySession(!!json.usingYesterdaySession);
+    } catch {
+      setRecentError('Kon recente orders niet ophalen');
+    } finally {
+      setRecentLoading(false);
     }
-    const orderId = parseInt(match[1], 10);
+  }, []);
 
+  useEffect(() => {
+    if (isLoading) return;
+    void loadRecentOrders();
+  }, [isLoading, loadRecentOrders]);
+
+  const importOrderById = useCallback(async (orderId: number) => {
     setOrderLoading(true);
     setOrderInfo(null);
 
@@ -147,8 +213,8 @@ export default function VoorraadAanpassenPage() {
         }
 
         const newItems: AdjustmentItem[] = json.products
-          .filter((p: any) => p.productId && p.currentStock !== null)
-          .map((p: any) => {
+          .filter((p: { productId: number; currentStock: number | null }) => p.productId && p.currentStock !== null)
+          .map((p: { productId: number; name: string; qty: number; currentStock: number }) => {
             const adjustment = Math.round(-p.qty);
             return {
               productId: p.productId,
@@ -178,6 +244,19 @@ export default function VoorraadAanpassenPage() {
     } finally {
       setOrderLoading(false);
     }
+  }, [showToast]);
+
+  const handleOrderImport = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!orderInput.trim()) return;
+
+    const match = orderInput.trim().match(/(\d+)\s*$/);
+    if (!match) {
+      showToast('Voer een geldig order ID of URL in', 'error');
+      return;
+    }
+
+    await importOrderById(parseInt(match[1], 10));
   };
 
   const updateAdjustment = useCallback((productId: number, newAdjustment: number) => {
@@ -488,6 +567,79 @@ export default function VoorraadAanpassenPage() {
                 </div>
               </div>
             )}
+
+            <div className="mt-6 pt-5 border-t border-gray-200">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h4 className="text-base font-semibold text-gray-900">Laatste 20 POS-orders</h4>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    {usingYesterdaySession
+                      ? recentSessionLabel
+                        ? `TEST · sessie van gisteren: ${recentSessionLabel.replace(/^TEST gisteren · /, '')}`
+                        : 'TEST · geen POS-sessie van gisteren gevonden'
+                      : recentSessionLabel
+                        ? `Actieve kassa: ${recentSessionLabel}`
+                        : 'Geen open kassasessie — laatste orders over alle sessies'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadRecentOrders()}
+                  disabled={recentLoading}
+                  className="shrink-0 px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg disabled:opacity-50"
+                >
+                  {recentLoading ? '⏳' : '↻'} Vernieuwen
+                </button>
+              </div>
+
+              {usingYesterdaySession && (
+                <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                  Tijdelijke test: de kassasessie van gisteren wordt als actief getoond. Zet
+                  {' '}<code className="font-mono text-xs">TEMP_USE_YESTERDAY_POS_SESSION</code> op
+                  {' '}<code className="font-mono text-xs">false</code> om dit terug uit te zetten.
+                </div>
+              )}
+
+              {recentError && (
+                <p className="text-sm text-red-600 mb-3">{recentError}</p>
+              )}
+
+              {recentLoading && recentOrders.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">Orders laden...</p>
+              ) : recentOrders.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">Geen recente POS-orders gevonden</p>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {recentOrders.map((order) => (
+                    <button
+                      key={order.id}
+                      type="button"
+                      onClick={() => void importOrderById(order.id)}
+                      disabled={orderLoading}
+                      className="w-full text-left flex items-center justify-between gap-3 p-3 border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all disabled:opacity-50"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-gray-900">{order.name}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${posOrderStateClass(order.state)}`}>
+                            {posOrderStateLabel(order.state)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500 mt-0.5">
+                          <span>{new Date(order.date).toLocaleString('nl-BE')}</span>
+                          <span>{order.partner || 'Walk-in'}</span>
+                          <span>{order.lineCount} product{order.lineCount !== 1 ? 'en' : ''}</span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-semibold text-gray-900">{formatEuro(order.total)}</p>
+                        <p className="text-xs text-purple-700 font-medium">Importeren</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Adjustments list */}

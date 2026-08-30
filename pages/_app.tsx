@@ -7,7 +7,8 @@ const PAGES_WITHOUT_NAV = ['/foodtruck', '/foodtruck-omzet'];
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
-  const hideNav = PAGES_WITHOUT_NAV.includes(router.pathname);
+  const path = (router.pathname || '/').replace(/\/$/, '') || '/';
+  const hideNav = PAGES_WITHOUT_NAV.includes(path);
 
   return (
     <>

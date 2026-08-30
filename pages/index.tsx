@@ -18,7 +18,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/session');
       const data = await res.json();
       if (data.isLoggedIn) {
-        router.push('/dashboard');
+        router.replace('/voorraad-opzoeken/');
       }
     } catch {
       // Not logged in, stay on login page
@@ -41,7 +41,7 @@ export default function LoginPage() {
 
       if (json.success && json.user) {
         // Session cookie is set automatically
-        router.push('/dashboard');
+        router.replace('/voorraad-opzoeken/');
       } else {
         setError(json.error || 'Ongeldige login');
       }

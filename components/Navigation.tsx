@@ -42,7 +42,10 @@ export default function Navigation() {
     }
   };
 
-  const isActive = (path: string) => router.pathname === path;
+  const isActive = (path: string) => {
+    const current = (router.pathname || '/').replace(/\/$/, '') || '/';
+    return current === path;
+  };
 
   const navItems = [
     { path: '/voorraad-opzoeken', label: 'Voorraad opzoeken', icon: '🔍' },
@@ -56,7 +59,7 @@ export default function Navigation() {
   ];
 
   return (
-    <nav className="bg-white shadow-lg border-b" suppressHydrationWarning>
+    <nav className="sticky top-0 z-40 bg-white shadow-lg border-b" suppressHydrationWarning>
       {/* Environment indicator banner - only show if NOT production */}
       {envInfo && !envInfo.isProduction && (
         <div className="bg-blue-600 text-white px-4 py-2">
@@ -72,15 +75,15 @@ export default function Navigation() {
       
       <div className="max-w-7xl mx-auto px-2 sm:px-4">
         <div className="flex items-center h-14 gap-2">
-          <Link href="/voorraad-opzoeken" className="text-base sm:text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors flex-shrink-0 mr-1">
+          <Link href="/voorraad-opzoeken/" className="text-base sm:text-xl font-bold text-gray-800 hover:text-blue-600 transition-colors flex-shrink-0 mr-1">
             🏪 <span className="hidden sm:inline">Babette</span>
           </Link>
 
-          <div className="flex items-center gap-0.5 sm:gap-1 flex-1 justify-end flex-wrap" suppressHydrationWarning>
+          <div className="flex items-center gap-0.5 sm:gap-1 flex-1 justify-end flex-nowrap overflow-x-auto" suppressHydrationWarning>
             {navItems.map((item) => (
               <Link
                 key={item.path}
-                href={item.path}
+                href={`${item.path}/`}
                 className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   isActive(item.path)
                     ? 'bg-blue-100 text-blue-700 shadow-sm'

@@ -1,8 +1,14 @@
 import { useState, useRef, useCallback, useEffect, Fragment } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
-
-type PrinterType = 'zebra' | 'dymo';
-type LabelFormat = 'normal' | 'small'; // small = 25×25mm, alleen prijs + variant
+import {
+  printProductLabels,
+  loadPrinterPreference,
+  loadLabelFormatPreference,
+  savePrinterPreference,
+  saveLabelFormatPreference,
+  type PrinterType,
+  type LabelFormat,
+} from '@/lib/print-product-labels-client';
 
 interface ScannedProduct {
   id: number;
@@ -103,25 +109,23 @@ export default function LabelsAfdrukkenPage() {
   const reassignSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('labelPrinter') as PrinterType | null;
-    if (saved === 'dymo' || saved === 'zebra') setPrinter(saved);
+    setPrinter(loadPrinterPreference());
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem('labelFormat') as LabelFormat | null;
-    if (saved === 'small' || saved === 'normal') setLabelFormat(saved);
+    setLabelFormat(loadLabelFormatPreference());
   }, []);
 
   const togglePrinter = () => {
     const next: PrinterType = printer === 'zebra' ? 'dymo' : 'zebra';
     setPrinter(next);
-    localStorage.setItem('labelPrinter', next);
+    savePrinterPreference(next);
   };
 
   const toggleLabelFormat = () => {
     const next: LabelFormat = labelFormat === 'normal' ? 'small' : 'normal';
     setLabelFormat(next);
-    localStorage.setItem('labelFormat', next);
+    saveLabelFormatPreference(next);
   };
 
   const calibrateZebra = async (deep = false) => {
@@ -740,100 +744,29 @@ export default function LabelsAfdrukkenPage() {
 
     setPrintingLabels(true);
     try {
-      const productIds: number[] = [];
-      const overrides: Record<number, { name?: string; attributes?: string; sizeRange?: string }> = {};
-      for (const p of scannedProducts) {
-        overrides[p.id] = {
-          name: p.name,
-          attributes: p.attributes || undefined,
-          sizeRange: p.sizeRange || undefined,
-        };
-        for (let i = 0; i < p.count; i++) {
-          productIds.push(p.id);
-        }
-      }
-
-      const payload = { productIds, overrides, printer, format: labelFormat };
-      const useZpl = printer === 'zebra' && labelFormat === 'normal';
-
-      if (useZpl) {
-        const zplRes = await fetch('/api/print-product-labels', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, output: 'zpl' }),
-        });
-
-        if (zplRes.ok) {
-          const zpl = await zplRes.text();
-          const bridgeRes = await fetch('/api/print-zpl', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ zpl }),
-          }).catch(() => null);
-
-          if (bridgeRes?.ok) {
-            const total = (zpl.match(/\^XA/g) || []).length;
-            if (confirm(`Alle ${total} labels zijn naar de Zebra gestuurd.\n\nWil je de lijst leegmaken?`)) {
-              setScannedProducts([]);
-            }
-            setPrintingLabels(false);
-            focusInput();
-            return;
-          }
-
-          const useFallback = confirm(
-            'Zebra-bridge niet bereikbaar of fout. Controleer de bridge (lokaal of via tunnel).\n\nNu afdrukken via het browser-printvenster?'
-          );
-          if (!useFallback) {
-            setPrintingLabels(false);
-            return;
-          }
-        } else {
-          const useFallback = confirm(
-            'Kon geen ZPL ophalen voor directe print (controleer of je bent ingelogd).\n\nAfdrukken via het browser-printvenster?'
-          );
-          if (!useFallback) {
-            setPrintingLabels(false);
-            return;
-          }
-        }
-      }
-
-      const labelWindow = window.open('', '_blank', 'width=400,height=600');
-      if (!labelWindow) {
-        alert('Popup geblokkeerd. Sta popups toe voor deze site.');
-        return;
-      }
-
-      const res = await fetch('/api/print-product-labels', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const result = await printProductLabels({
+        products: scannedProducts,
+        printer,
+        format: labelFormat,
+        onClearList: () => {
+          setScannedProducts([]);
+          focusInput();
+        },
       });
-
-      if (!res.ok) {
-        const error = await res.json();
-        labelWindow.close();
-        alert(`Fout: ${error.error || 'Kon labels niet genereren'}`);
-        return;
-      }
-
-      const html = await res.text();
-      labelWindow.document.write(html);
-      labelWindow.document.close();
-
-      const checkClosed = setInterval(() => {
-        if (labelWindow.closed) {
-          clearInterval(checkClosed);
-          if (confirm('Labels afgedrukt. Wil je de lijst leegmaken?')) {
-            setScannedProducts([]);
-            focusInput();
-          }
+      switch (result.status) {
+        case 'zpl-printed':
+          focusInput();
+          break;
+        case 'html-printed':
+        case 'cancelled':
+        case 'popup-blocked':
+        case 'error':
+          break;
+        default: {
+          const _exhaustive: never = result;
+          return _exhaustive;
         }
-      }, 500);
-    } catch (err) {
-      console.error('Error printing labels:', err);
-      alert('Fout bij afdrukken van labels');
+      }
     } finally {
       setPrintingLabels(false);
     }

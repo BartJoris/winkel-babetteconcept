@@ -51,6 +51,7 @@ export default function Navigation() {
     { path: '/voorraad-opzoeken', label: 'Voorraad opzoeken', icon: '🔍' },
     { path: '/voorraad-aanpassen', label: 'Voorraad aanpassen', icon: '📦' },
     { path: '/labels-afdrukken', label: 'Labels', icon: '🏷️' },
+    { path: '/labels-afdrukken-selectie', label: 'Labels selectie', icon: '☑️' },
     { path: '/labels-debug', label: 'Label test', icon: '🔧' },
     { path: '/webshoporders-beheren', label: 'Webshoporders', icon: '📦' },
     { path: '/cadeaukaarten-aanmaken', label: 'Cadeaubon Printen', icon: '🎁' },

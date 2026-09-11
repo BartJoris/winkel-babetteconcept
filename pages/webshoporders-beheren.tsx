@@ -451,6 +451,34 @@ export default function WebshopordersBeheren() {
     setPendingOrderConfirmation(null);
   };
 
+  const downloadPdfResponse = async (
+    res: Response,
+    filename: string,
+    errorPrefix: string
+  ) => {
+    const contentType = res.headers.get('content-type') || '';
+
+    if (res.ok && contentType.includes('application/pdf')) {
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      return;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    let errorMsg = json.error || 'Kon niet downloaden';
+    if (json.availableAttachments && json.availableAttachments.length > 0) {
+      errorMsg += '\n\nGevonden bestanden:\n' + json.availableAttachments.join('\n');
+    }
+    alert(`${errorPrefix}: ${errorMsg}`);
+  };
+
   const handleDownloadInvoice = async (orderId: number, orderName: string) => {
     setProcessingOrders(prev => ({ ...prev, [orderId]: true }));
     try {
@@ -459,21 +487,8 @@ export default function WebshopordersBeheren() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       });
-      
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Order_${orderName}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        const json = await res.json();
-        alert(`Factuur: ${json.error || 'Kon niet downloaden'}`);
-      }
+
+      await downloadPdfResponse(res, `Order_${orderName}.pdf`, 'Factuur');
     } catch (err) {
       console.error('Error downloading invoice:', err);
       alert('Fout bij downloaden van factuur');
@@ -490,25 +505,8 @@ export default function WebshopordersBeheren() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       });
-      
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ShippingLabel_${orderName}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        const json = await res.json();
-        let errorMsg = json.error || 'Kon niet downloaden';
-        if (json.availableAttachments && json.availableAttachments.length > 0) {
-          errorMsg += '\n\nGevonden bestanden:\n' + json.availableAttachments.join('\n');
-        }
-        alert(`Verzendlabel: ${errorMsg}`);
-      }
+
+      await downloadPdfResponse(res, `ShippingLabel_${orderName}.pdf`, 'Verzendlabel');
     } catch (err) {
       console.error('Error downloading shipping label:', err);
       alert('Fout bij downloaden van verzendlabel');

@@ -57,6 +57,7 @@ export default function Navigation() {
     { path: '/cadeaukaarten-aanmaken', label: 'Cadeaubon Printen', icon: '🎁' },
     { path: '/cadeaubon-opzoeken', label: 'Cadeaubon Opzoeken', icon: '🔎' },
     { path: '/afval', label: 'Afval', icon: '♻️' },
+    { path: '/problemen', label: 'Problemen', icon: '🎫' },
   ];
 
   return (

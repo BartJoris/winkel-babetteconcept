@@ -60,7 +60,9 @@ export function isShippingLabelAttachmentName(name: string): boolean {
 
 function isLikelyBase64Pdf(data: string): boolean {
   const trimmed = data.replace(/\s/g, '');
-  return trimmed.length > 100 && trimmed.startsWith('JVBER');
+  if (trimmed.length < 20) return false;
+  if (/^\d+(\.\d+)?\s*[KMG]?B?$/i.test(trimmed)) return false;
+  return trimmed.startsWith('JVBER');
 }
 
 export function attachmentToPdfBuffer(attachment: AttachmentWithData): Buffer | null {

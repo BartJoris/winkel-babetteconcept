@@ -16,11 +16,20 @@ export type AttachmentMeta = {
 };
 
 export type AttachmentWithData = AttachmentMeta & {
-  datas?: string | false;
-  raw?: string | false;
+  datas?: unknown;
+  raw?: unknown;
 };
 
-const BINARY_CONTEXT = { bin_size: false };
+const BINARY_META_FIELDS = ['id', 'name', 'mimetype', 'res_model', 'res_id'] as const;
+const RAW_CONTEXT = { include_binary_content: true, bin_size: false };
+const DATAS_CONTEXT = { bin_size: false };
+const ODOO_URL = process.env.ODOO_URL || 'https://www.babetteconcept.be/jsonrpc';
+const ODOO_DB = process.env.ODOO_DB || 'babetteconcept';
+
+export function odooJson2Url(jsonrpcUrl: string, model: string, method: string): string {
+  const origin = jsonrpcUrl.replace(/\/jsonrpc\/?$/i, '').replace(/\/+$/, '');
+  return `${origin}/json/2/${model}/${method}`;
+}
 
 export function isPdfAttachment(attachment: {
   name: string;
@@ -58,20 +67,29 @@ export function isShippingLabelAttachmentName(name: string): boolean {
   );
 }
 
-function isLikelyBase64Pdf(data: string): boolean {
-  const trimmed = data.replace(/\s/g, '');
-  if (trimmed.length < 20) return false;
-  if (/^\d+(\.\d+)?\s*[KMG]?B?$/i.test(trimmed)) return false;
-  return trimmed.startsWith('JVBER');
+function isBinSizePlaceholder(data: string): boolean {
+  return /^\d+(?:\.\d+)?\s*(?:bytes?|[kmg]b)?$/i.test(data.trim());
+}
+
+function decodeBinaryValue(value: unknown): Buffer | null {
+  if (value == null || value === false) return null;
+
+  if (typeof value === 'string') {
+    const trimmed = value.replace(/\s/g, '');
+    if (!trimmed || isBinSizePlaceholder(value) || isBinSizePlaceholder(trimmed)) return null;
+    const buffer = Buffer.from(trimmed, 'base64');
+    return isValidPdfBuffer(buffer) ? buffer : null;
+  }
+
+  if (typeof value === 'object') {
+    return decodeBinaryValue((value as { content?: unknown }).content);
+  }
+
+  return null;
 }
 
 export function attachmentToPdfBuffer(attachment: AttachmentWithData): Buffer | null {
-  for (const value of [attachment.datas, attachment.raw]) {
-    if (typeof value !== 'string' || value.length === 0) continue;
-    if (!isLikelyBase64Pdf(value)) continue;
-    return Buffer.from(value, 'base64');
-  }
-  return null;
+  return decodeBinaryValue(attachment.raw) ?? decodeBinaryValue(attachment.datas);
 }
 
 export function isValidPdfBuffer(buffer: Buffer): boolean {
@@ -103,6 +121,44 @@ async function searchAttachmentMeta(
   });
 }
 
+function hasDecodablePdf(attachments: AttachmentWithData[]): boolean {
+  return attachments.some((attachment) => attachmentToPdfBuffer(attachment) !== null);
+}
+
+async function readAttachmentBinaryJson2(
+  apiKey: string,
+  attachmentIds: number[]
+): Promise<AttachmentWithData[] | null> {
+  const url = odooJson2Url(ODOO_URL, 'ir.attachment', 'read');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `bearer ${apiKey}`,
+      'X-Odoo-Database': ODOO_DB,
+    },
+    body: JSON.stringify({
+      ids: attachmentIds,
+      fields: [...BINARY_META_FIELDS, 'raw'],
+      context: RAW_CONTEXT,
+    }),
+  });
+
+  if (!res.ok) return null;
+
+  const json: unknown = await res.json();
+  if (Array.isArray(json)) return json as AttachmentWithData[];
+  if (
+    json &&
+    typeof json === 'object' &&
+    'result' in json &&
+    Array.isArray((json as { result?: unknown }).result)
+  ) {
+    return (json as { result: AttachmentWithData[] }).result;
+  }
+  return null;
+}
+
 async function readAttachmentBinary(
   odooCall: OrderAttachmentsOdooCall,
   uid: number,
@@ -111,17 +167,45 @@ async function readAttachmentBinary(
 ): Promise<AttachmentWithData[]> {
   if (attachmentIds.length === 0) return [];
 
-  return odooCall<AttachmentWithData[]>({
-    uid,
-    password,
-    model: 'ir.attachment',
-    method: 'read',
-    args: [attachmentIds],
-    kwargs: {
-      fields: ['id', 'name', 'mimetype', 'datas', 'raw', 'res_model', 'res_id'],
-      context: BINARY_CONTEXT,
+  const attempts: Array<{ fields: string[]; context: Record<string, unknown> }> = [
+    {
+      fields: [...BINARY_META_FIELDS, 'raw'],
+      context: RAW_CONTEXT,
     },
-  });
+    {
+      fields: [...BINARY_META_FIELDS, 'datas'],
+      context: DATAS_CONTEXT,
+    },
+  ];
+
+  let lastError: unknown;
+  let rpcResult: AttachmentWithData[] = [];
+
+  for (const attempt of attempts) {
+    try {
+      rpcResult = await odooCall<AttachmentWithData[]>({
+        uid,
+        password,
+        model: 'ir.attachment',
+        method: 'read',
+        args: [attachmentIds],
+        kwargs: attempt,
+      });
+      if (hasDecodablePdf(rpcResult)) return rpcResult;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  try {
+    const json2 = await readAttachmentBinaryJson2(password, attachmentIds);
+    if (json2 && hasDecodablePdf(json2)) return json2;
+  } catch (error) {
+    lastError = lastError ?? error;
+  }
+
+  if (rpcResult.length > 0) return rpcResult;
+  throw lastError instanceof Error ? lastError : new Error('Failed to read attachment binary');
 }
 
 export async function collectOrderAttachments(

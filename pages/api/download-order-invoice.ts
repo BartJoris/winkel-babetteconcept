@@ -42,7 +42,7 @@ async function odooCall<T>(params: {
   const json = await res.json();
 
   if (json.error) {
-    throw new Error(json.error.message || 'Odoo API error');
+    throw new Error(json.error.data?.message || json.error.message || 'Odoo API error');
   }
 
   return json.result as T;

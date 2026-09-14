@@ -2,8 +2,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 const ZIPCODE = '8670';
 const STREET_NAME = 'Albert I Laan';
+/** Recycle! only accepts the huisnummer; bus 001 is shown in ADDRESS_DISPLAY. */
 const HOUSE_NUMBER = '75';
-const ADDRESS_DISPLAY = 'Albert I Laan 75, 8670 Oostduinkerke';
+const ADDRESS_DISPLAY = 'Albert I Laan 75/001, 8670 Oostduinkerke';
 
 const HEADERS = {
   Accept: 'application/json, text/plain, */*',

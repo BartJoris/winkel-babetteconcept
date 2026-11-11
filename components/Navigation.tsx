@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 
@@ -25,14 +25,29 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/webshoporders-beheren', label: 'Webshoporders', icon: '📦' },
   { path: '/cadeaukaarten-aanmaken', label: 'Cadeaubon Printen', icon: '🎁' },
   { path: '/cadeaubon-opzoeken', label: 'Cadeaubon Opzoeken', icon: '🔎' },
+  { path: '/koksijdebon', label: 'Koksijdebon', icon: '🎫' },
   { path: '/afval', label: 'Afval', icon: '♻️' },
   { path: '/problemen', label: 'Problemen', icon: '🎫' },
 ];
+
+async function openKoksijdebonSoftkey() {
+  const res = await fetch('/api/otzy-softkey');
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Koksijdebon openen mislukt');
+  }
+  const url = typeof json.openUrl === 'string' ? json.openUrl : null;
+  if (!url) {
+    throw new Error('Geen Otzy Softkey-URL geconfigureerd');
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
 
 export default function Navigation() {
   const [envInfo, setEnvInfo] = useState<EnvInfo | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [koksijdebonError, setKoksijdebonError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -77,6 +92,17 @@ export default function Navigation() {
         : 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'
     }`;
 
+  const handleKoksijdebonClick = async (e: MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setKoksijdebonError(null);
+    setMenuOpen(false);
+    try {
+      await openKoksijdebonSoftkey();
+    } catch (err) {
+      setKoksijdebonError(err instanceof Error ? err.message : 'Koksijdebon openen mislukt');
+    }
+  };
+
   const logoutButton = (compact: boolean) => (
     <button
       onClick={() => setShowLogoutConfirm(true)}
@@ -89,6 +115,65 @@ export default function Navigation() {
       <span className={compact ? 'hidden md:inline' : ''}>Uit</span>
     </button>
   );
+
+  const renderNavItem = (item: NavItem) => {
+    if (item.path === '/koksijdebon') {
+      return (
+        <a
+          key={item.path}
+          href="/koksijdebon/"
+          onClick={handleKoksijdebonClick}
+          className={linkClass(item.path)}
+          title="Koksijdebon openen in nieuw tabblad"
+        >
+          <span className="text-base sm:text-lg">{item.icon}</span>
+          <span className="hidden md:inline">{item.label}</span>
+        </a>
+      );
+    }
+
+    return (
+      <Link
+        key={item.path}
+        href={`${item.path}/`}
+        className={linkClass(item.path)}
+        title={item.label}
+        suppressHydrationWarning
+      >
+        <span className="text-base sm:text-lg" suppressHydrationWarning>{item.icon}</span>
+        <span className="hidden md:inline">{item.label}</span>
+      </Link>
+    );
+  };
+
+  const renderMobileNavItem = (item: NavItem) => {
+    if (item.path === '/koksijdebon') {
+      return (
+        <a
+          key={item.path}
+          href="/koksijdebon/"
+          onClick={handleKoksijdebonClick}
+          className={linkClass(item.path)}
+          title="Koksijdebon openen in nieuw tabblad"
+        >
+          <span className="text-base">{item.icon}</span>
+          <span>{item.label}</span>
+        </a>
+      );
+    }
+
+    return (
+      <Link
+        key={item.path}
+        href={`${item.path}/`}
+        className={linkClass(item.path)}
+        title={item.label}
+      >
+        <span className="text-base">{item.icon}</span>
+        <span>{item.label}</span>
+      </Link>
+    );
+  };
 
   return (
     <nav className="sticky top-0 z-40 bg-white shadow-lg border-b" suppressHydrationWarning>
@@ -111,18 +196,7 @@ export default function Navigation() {
           </Link>
 
           <div className="hidden sm:flex flex-wrap items-center gap-0.5 flex-1" suppressHydrationWarning>
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.path}
-                href={`${item.path}/`}
-                className={linkClass(item.path)}
-                title={item.label}
-                suppressHydrationWarning
-              >
-                <span className="text-base sm:text-lg" suppressHydrationWarning>{item.icon}</span>
-                <span className="hidden md:inline">{item.label}</span>
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) => renderNavItem(item))}
             {logoutButton(true)}
           </div>
 
@@ -141,21 +215,17 @@ export default function Navigation() {
 
         {menuOpen && (
           <div className="sm:hidden border-t py-2 flex flex-col gap-0.5">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.path}
-                href={`${item.path}/`}
-                className={linkClass(item.path)}
-                title={item.label}
-              >
-                <span className="text-base">{item.icon}</span>
-                <span>{item.label}</span>
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) => renderMobileNavItem(item))}
             {logoutButton(false)}
           </div>
         )}
       </div>
+
+      {koksijdebonError && (
+        <div className="bg-red-50 border-t border-red-200 px-4 py-2 text-sm text-red-800">
+          {koksijdebonError}
+        </div>
+      )}
 
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

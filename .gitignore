@@ -51,3 +51,6 @@ openshift/deployment.yaml.bak
 # Logs
 server.log
 *.log
+
+# Feature harness run artifacts
+.agent/harness/runs/

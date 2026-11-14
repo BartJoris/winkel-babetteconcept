@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   loadPendingOrders,
+  productOrderLines,
   type PendingOrdersOdooCall,
   type PendingOrdersOdooCallParams,
 } from './pendingOrders';
@@ -25,6 +26,16 @@ describe('loadPendingOrders', () => {
 
       switch (params.model) {
         case 'sale.order':
+          assert.deepEqual(
+            (params.kwargs?.fields as string[] | undefined)?.slice(-5),
+            [
+              'carrier_id',
+              'x_studio_geschenkverpakking',
+              'x_studio_welke_artikelen_inpakken',
+              'x_studio_persoonlijke_boodschap',
+              'x_studio_factuur_gewenst',
+            ]
+          );
           return Array.from({ length: 10 }, (_, i) => ({
             id: i + 1,
             name: `SO${i + 1}`,
@@ -33,6 +44,11 @@ describe('loadPendingOrders', () => {
             partner_id: [100 + i, `Klant ${i}`],
             state: 'sale',
             website_id: [1, 'Webshop'],
+            carrier_id: i === 0 ? [643, 'Verzenden via Bpost'] : false,
+            x_studio_geschenkverpakking: i === 0 ? 'some_items' : false,
+            x_studio_welke_artikelen_inpakken: i === 0 ? 'Alleen de broek' : false,
+            x_studio_persoonlijke_boodschap: i === 0 ? 'Veel plezier!' : false,
+            x_studio_factuur_gewenst: i === 0,
           })) as T;
         case 'res.partner':
           assert.equal(domainHasIdIn(params.args, [100, 101, 109]), true);
@@ -47,13 +63,24 @@ describe('loadPendingOrders', () => {
             country_id: [21, 'België'],
           })) as T;
         case 'sale.order.line':
-          return Array.from({ length: 10 }, (_, i) => ({
-            order_id: [i + 1, `SO${i + 1}`],
-            product_id: [500 + i, `Product ${i}`],
-            product_uom_qty: 1,
-            price_unit: 10 + i,
-            price_total: 10 + i,
-          })) as T;
+          return [
+            ...Array.from({ length: 10 }, (_, i) => ({
+              order_id: [i + 1, `SO${i + 1}`],
+              product_id: [500 + i, `Product ${i}`],
+              product_uom_qty: 1,
+              price_unit: 10 + i,
+              price_total: 10 + i,
+              is_delivery: false,
+            })),
+            {
+              order_id: [1, 'SO1'],
+              product_id: [6078, '[SHIPMENT] Shipping'],
+              product_uom_qty: 1,
+              price_unit: 9.63,
+              price_total: 9.63,
+              is_delivery: true,
+            },
+          ] as T;
         case 'stock.picking':
           return [
             { sale_id: [1, 'SO1'], state: 'assigned' },
@@ -79,15 +106,26 @@ describe('loadPendingOrders', () => {
     assert.equal(orders[0].partner_email, 'klant0@example.com');
     assert.equal(orders[0].partner_country, 'België');
     assert.equal(orders[0].picking_state, 'assigned');
-    assert.deepEqual(orders[0].order_line, [
+    assert.equal(orders[0].carrier_name, 'Verzenden via Bpost');
+    assert.equal(orders[0].gift_wrap, 'some_items');
+    assert.equal(orders[0].gift_wrap_items, 'Alleen de broek');
+    assert.equal(orders[0].personal_message, 'Veel plezier!');
+    assert.equal(orders[0].invoice_requested, true);
+    assert.equal(orders[0].order_line.length, 2);
+    assert.equal(productOrderLines(orders[0]).length, 1);
+    assert.deepEqual(productOrderLines(orders[0]), [
       {
         product_id: [500, 'Product 0'],
         product_uom_qty: 1,
         price_unit: 10,
         price_total: 10,
+        is_delivery: false,
       },
     ]);
     assert.equal(orders[1].picking_state, 'done');
+    assert.equal(orders[1].carrier_name, null);
+    assert.equal(orders[1].gift_wrap, null);
+    assert.equal(orders[1].invoice_requested, false);
     assert.equal(orders[2].picking_state, null);
   });
 

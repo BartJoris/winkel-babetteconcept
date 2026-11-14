@@ -23,4 +23,11 @@ Hooks en scripts (format, lint, typecheck, tests) hebben voorrang op instructiet
 - Softkey-endpoints (`/api/otzy-softkey`, `/api/otzy-softkey-qr`) alleen voor ingelogde winkel-sessies.
 - Geen eigen redeem-API: innen gebeurt in Otzy/Cirklo via Softkey of merchant login.
 
+## Webshoporders / checkout extra info
+
+- Verzendmethode: `sale.order.carrier_id` (`delivery.carrier`).
+- Studio-velden op `sale.order`: `x_studio_geschenkverpakking` (`not_pack` | `all_together` | `some_items`), `x_studio_welke_artikelen_inpakken`, `x_studio_persoonlijke_boodschap`, `x_studio_factuur_gewenst`.
+- Mapping + fetch in `lib/pendingOrders.ts`; tonen op `/webshoporders-beheren`.
+- Producttelling negeert `sale.order.line` met `is_delivery` (verzendregels).
+
 <!-- END:feature-harness -->

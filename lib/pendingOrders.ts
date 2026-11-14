@@ -9,6 +9,14 @@ export type PendingOrdersOdooCallParams = {
 
 export type PendingOrdersOdooCall = <T>(params: PendingOrdersOdooCallParams) => Promise<T>;
 
+export type GiftWrapOption = 'not_pack' | 'all_together' | 'some_items';
+
+export const GIFT_WRAP_LABELS: Record<GiftWrapOption, string> = {
+  not_pack: 'Niet inpakken',
+  all_together: 'Alles samen inpakken',
+  some_items: 'Bepaalde artikelen inpakken',
+};
+
 export type PendingOrder = {
   id: number;
   name: string;
@@ -25,11 +33,18 @@ export type PendingOrder = {
   state: string;
   website_id: [number, string] | false;
   picking_state: string | null;
+  carrier_id: [number, string] | false;
+  carrier_name: string | null;
+  gift_wrap: GiftWrapOption | null;
+  gift_wrap_items: string | null;
+  personal_message: string | null;
+  invoice_requested: boolean;
   order_line: Array<{
     product_id: [number, string];
     product_uom_qty: number;
     price_unit: number;
     price_total: number;
+    is_delivery: boolean;
   }>;
 };
 
@@ -41,6 +56,17 @@ function many2oneId(value: unknown): number | null {
 
 function many2oneName(value: unknown): string | null {
   return Array.isArray(value) && typeof value[1] === 'string' ? value[1] : null;
+}
+
+function odooText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+function parseGiftWrap(value: unknown): GiftWrapOption | null {
+  if (value === 'not_pack' || value === 'all_together' || value === 'some_items') {
+    return value;
+  }
+  return null;
 }
 
 /**
@@ -72,6 +98,11 @@ export async function loadPendingOrders(
         'partner_id',
         'state',
         'website_id',
+        'carrier_id',
+        'x_studio_geschenkverpakking',
+        'x_studio_welke_artikelen_inpakken',
+        'x_studio_persoonlijke_boodschap',
+        'x_studio_factuur_gewenst',
       ],
       order: 'date_order desc',
       limit: 10,
@@ -111,7 +142,14 @@ export async function loadPendingOrders(
       method: 'search_read',
       args: [[['order_id', 'in', orderIds]]],
       kwargs: {
-        fields: ['order_id', 'product_id', 'product_uom_qty', 'price_unit', 'price_total'],
+        fields: [
+          'order_id',
+          'product_id',
+          'product_uom_qty',
+          'price_unit',
+          'price_total',
+          'is_delivery',
+        ],
       },
     }),
     odooCall<OdooRecord[]>({
@@ -168,12 +206,24 @@ export async function loadPendingOrders(
       state: String(order.state),
       website_id: (order.website_id as [number, string] | false) || false,
       picking_state: pickingMap.get(order.id as number) ?? null,
+      carrier_id: (order.carrier_id as [number, string] | false) || false,
+      carrier_name: many2oneName(order.carrier_id),
+      gift_wrap: parseGiftWrap(order.x_studio_geschenkverpakking),
+      gift_wrap_items: odooText(order.x_studio_welke_artikelen_inpakken),
+      personal_message: odooText(order.x_studio_persoonlijke_boodschap),
+      invoice_requested: order.x_studio_factuur_gewenst === true,
       order_line: orderLines.map((line) => ({
         product_id: line.product_id as [number, string],
         product_uom_qty: Number(line.product_uom_qty),
         price_unit: Number(line.price_unit),
         price_total: Number(line.price_total),
+        is_delivery: line.is_delivery === true,
       })),
     };
   });
+}
+
+/** Product lines excluding delivery/shipment rows. */
+export function productOrderLines(order: Pick<PendingOrder, 'order_line'>) {
+  return order.order_line.filter((line) => !line.is_delivery);
 }

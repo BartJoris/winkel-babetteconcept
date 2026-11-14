@@ -2,30 +2,34 @@ import { useEffect, useState, useCallback, memo } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import ProductAvailabilityDialog from '@/components/ProductAvailabilityDialog';
 import DeliveryConfirmationDialog from '@/components/DeliveryConfirmationDialog';
+import {
+  GIFT_WRAP_LABELS,
+  productOrderLines,
+  type GiftWrapOption,
+  type PendingOrder,
+} from '@/lib/pendingOrders';
 
-type PendingOrderItem = {
-  id: number;
-  name: string;
-  date_order: string;
-  amount_total: number;
-  partner_id: [number, string] | false;
-  partner_name: string;
-  partner_email: string | null;
-  partner_phone: string | null;
-  partner_street: string | null;
-  partner_city: string | null;
-  partner_zip: string | null;
-  partner_country: string | null;
-  state: string;
-  website_id: [number, string] | false;
-  picking_state: string | null;
-  order_line: Array<{
-    product_id: [number, string];
-    product_uom_qty: number;
-    price_unit: number;
-    price_total: number;
-  }>;
-};
+type PendingOrderItem = PendingOrder;
+
+function giftWrapLabel(option: GiftWrapOption | null): string {
+  if (!option) return 'Niet inpakken';
+  return GIFT_WRAP_LABELS[option];
+}
+
+function hasNotableExtraInfo(order: PendingOrderItem): boolean {
+  return (
+    order.invoice_requested ||
+    Boolean(order.personal_message) ||
+    Boolean(order.gift_wrap_items) ||
+    order.gift_wrap === 'all_together' ||
+    order.gift_wrap === 'some_items'
+  );
+}
+
+function productCountLabel(order: PendingOrderItem): string {
+  const count = productOrderLines(order).length;
+  return `${count} ${count === 1 ? 'product' : 'producten'}`;
+}
 
 const formatEuro = (amount: number) =>
   amount.toLocaleString('nl-BE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
@@ -126,8 +130,30 @@ const OrderCard = memo(({
           </span>
         </div>
         <div className="text-sm text-gray-700 mt-1">
-          👤 {order.partner_name} • {order.order_line.length} {order.order_line.length === 1 ? 'product' : 'producten'}
+          👤 {order.partner_name} • {productCountLabel(order)}
+          {order.carrier_name && (
+            <span className="text-gray-500"> • 🚚 {order.carrier_name}</span>
+          )}
         </div>
+        {hasNotableExtraInfo(order) && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {(order.gift_wrap === 'all_together' || order.gift_wrap === 'some_items') && (
+              <span className="text-xs px-2 py-0.5 rounded bg-pink-100 text-pink-800 font-medium">
+                🎁 {giftWrapLabel(order.gift_wrap)}
+              </span>
+            )}
+            {order.personal_message && (
+              <span className="text-xs px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-medium">
+                💬 Boodschap
+              </span>
+            )}
+            {order.invoice_requested && (
+              <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
+                🧾 Factuur gewenst
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-4">
         <span className="text-xl font-bold text-green-600">
@@ -166,7 +192,43 @@ const OrderCard = memo(({
                 <p>{order.partner_zip} {order.partner_city}</p>
               )}
               {order.partner_country && <p>{order.partner_country}</p>}
+              <p className="pt-2 border-t border-gray-100 mt-2">
+                <strong>Verzendmethode:</strong>{' '}
+                {order.carrier_name ?? 'Niet opgegeven'}
+              </p>
             </div>
+          </div>
+        </div>
+
+        {/* Extra checkout info */}
+        <div
+          className={`mb-4 p-4 rounded-lg border ${
+            hasNotableExtraInfo(order)
+              ? 'bg-pink-50 border-pink-200'
+              : 'bg-white border-transparent'
+          }`}
+        >
+          <h4 className="text-sm font-semibold text-gray-700 mb-2">🎁 Extra info</h4>
+          <div className="text-sm text-gray-700 space-y-2">
+            <p>
+              <strong>Geschenkverpakking:</strong> {giftWrapLabel(order.gift_wrap)}
+            </p>
+            {order.gift_wrap_items && (
+              <p>
+                <strong>Welke artikelen inpakken?</strong>{' '}
+                <span className="whitespace-pre-wrap">{order.gift_wrap_items}</span>
+              </p>
+            )}
+            {order.personal_message && (
+              <p>
+                <strong>Persoonlijke boodschap:</strong>{' '}
+                <span className="whitespace-pre-wrap">{order.personal_message}</span>
+              </p>
+            )}
+            <p>
+              <strong>Factuur gewenst?</strong>{' '}
+              {order.invoice_requested ? 'Ja — controleer facturatiegegevens' : 'Nee'}
+            </p>
           </div>
         </div>
 
